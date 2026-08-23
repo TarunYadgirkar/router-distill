@@ -1,0 +1,108 @@
+{"id": "cq-001", "text": "What year did the Berlin Wall fall?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-002", "text": "What is the capital of Australia?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-003", "text": "How many bytes are in a kilobyte, strictly speaking (SI)?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-004", "text": "What does the HTTP status code 418 mean?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-005", "text": "Who wrote 'The Sun Also Rises'?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-006", "text": "What is the chemical symbol for tungsten?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-007", "text": "What port does HTTPS use by default?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-008", "text": "Is a tomato botanically a fruit or a vegetable?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-009", "text": "What does the acronym YAML stand for?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-010", "text": "Convert 100 degrees Fahrenheit to Celsius.", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-011", "text": "What is the time complexity of binary search?", "slice": "clean-quick", "kind_hint": "code", "source": "curated"}
+{"id": "cq-012", "text": "In git, what does 'git stash pop' do?", "slice": "clean-quick", "kind_hint": "code", "source": "curated"}
+{"id": "cq-013", "text": "What Python keyword defines an anonymous function?", "slice": "clean-quick", "kind_hint": "code", "source": "curated"}
+{"id": "cq-014", "text": "Write a one-line Python expression that reverses a string s.", "slice": "clean-quick", "kind_hint": "code", "source": "curated"}
+{"id": "cq-015", "text": "Give me a two-word alliterative name for a coffee shop.", "slice": "clean-quick", "kind_hint": "creative", "source": "curated"}
+{"id": "cq-016", "text": "Which is larger, 2^10 or 10^3?", "slice": "clean-quick", "kind_hint": "comparison", "source": "curated"}
+{"id": "cq-017", "text": "What is the plural of 'criterion'?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-018", "text": "Name the four DNA nucleotide bases.", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-019", "text": "What does CSS stand for?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-020", "text": "Roughly how long does light take to travel from the Sun to Earth?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-021", "text": "What is the default branch name new GitHub repositories use?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-022", "text": "Rewrite 'utilize' in plainer English.", "slice": "clean-quick", "kind_hint": "creative", "source": "curated"}
+{"id": "cq-023", "text": "Is the number 91 prime?", "slice": "clean-quick", "kind_hint": "lookup", "source": "curated"}
+{"id": "cq-024", "text": "What SQL keyword removes duplicate rows from a SELECT result?", "slice": "clean-quick", "kind_hint": "code", "source": "curated"}
+{"id": "ct-001", "text": "Explain why TCP needs a three-way handshake instead of a two-way one.", "slice": "clean-thoughtful", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ct-002", "text": "Summarize the main arguments for and against remote work for a small startup.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ct-003", "text": "Compare REST and GraphQL for a mobile app backend with spotty connectivity.", "slice": "clean-thoughtful", "kind_hint": "comparison", "source": "curated"}
+{"id": "ct-004", "text": "Explain the difference between processes and threads to a junior developer, with one concrete example of when each is the right choice.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ct-005", "text": "Write a Python function that merges two sorted lists in O(n+m) time, with a docstring-free explanation of the invariant.", "slice": "clean-thoughtful", "kind_hint": "code", "source": "curated"}
+{"id": "ct-006", "text": "Why does JavaScript's '0.1 + 0.2 === 0.3' evaluate to false, and what should you do about it in financial code?", "slice": "clean-thoughtful", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ct-007", "text": "Draft a 100-word product announcement for a note-taking app that works offline.", "slice": "clean-thoughtful", "kind_hint": "creative", "source": "curated"}
+{"id": "ct-008", "text": "Compare SQLite and Postgres for a desktop application that syncs to the cloud nightly.", "slice": "clean-thoughtful", "kind_hint": "comparison", "source": "curated"}
+{"id": "ct-009", "text": "Explain how a hash map handles collisions, covering chaining and open addressing.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ct-010", "text": "Why do interest rate hikes typically strengthen a country's currency? Walk through the mechanism.", "slice": "clean-thoughtful", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ct-011", "text": "Write a regex that matches ISO-8601 dates (YYYY-MM-DD) with valid month and day ranges, and explain each part.", "slice": "clean-thoughtful", "kind_hint": "code", "source": "curated"}
+{"id": "ct-012", "text": "Summarize what CRDTs are and when a collaborative editor would pick them over operational transforms.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ct-013", "text": "A junior engineer wants to add Redis caching to every endpoint. Explain when caching helps, when it hurts, and what to check first.", "slice": "clean-thoughtful", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ct-014", "text": "Compare unit tests and integration tests: what failure classes does each catch that the other misses?", "slice": "clean-thoughtful", "kind_hint": "comparison", "source": "curated"}
+{"id": "ct-015", "text": "Write a short story opening (80 words) that establishes an unreliable narrator without saying so explicitly.", "slice": "clean-thoughtful", "kind_hint": "creative", "source": "curated"}
+{"id": "ct-016", "text": "Explain the CAP theorem using a two-datacenter example, and what 'choosing AP' actually means for reads.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ct-017", "text": "Why is 'SELECT *' discouraged in production queries? Give three distinct reasons.", "slice": "clean-thoughtful", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ct-018", "text": "Implement a debounce function in TypeScript and explain the difference from throttle.", "slice": "clean-thoughtful", "kind_hint": "code", "source": "curated"}
+{"id": "ct-019", "text": "Compare pnpm and npm for a monorepo: disk usage, install speed, and workspace ergonomics.", "slice": "clean-thoughtful", "kind_hint": "comparison", "source": "curated"}
+{"id": "ct-020", "text": "Explain semantic versioning and what a maintainer owes users at each of major, minor, and patch.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ct-021", "text": "Why do neural networks need non-linear activation functions? What happens without them?", "slice": "clean-thoughtful", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ct-022", "text": "Write a bash one-liner that finds the 10 largest files under a directory, and unpack how it works.", "slice": "clean-thoughtful", "kind_hint": "code", "source": "curated"}
+{"id": "ct-023", "text": "Rewrite this sentence three ways for three audiences (exec, engineer, customer): 'The migration caused intermittent login failures for six hours.'", "slice": "clean-thoughtful", "kind_hint": "creative", "source": "curated"}
+{"id": "ct-024", "text": "Explain eventual consistency to a product manager deciding whether a like-counter can be approximate.", "slice": "clean-thoughtful", "kind_hint": "synthesis", "source": "curated"}
+{"id": "cd-001", "text": "Prove that comparison-based sorting requires Omega(n log n) comparisons in the worst case.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-002", "text": "Design a rate limiter for a multi-tenant API gateway: per-tenant fairness, burst tolerance, and graceful behavior when the limiter's own store is degraded. Justify each choice and its failure modes.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-003", "text": "Prove that the halting problem is undecidable, then explain what that does and does not imply for practical static analysis tools.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-004", "text": "Design a database schema and indexing strategy for a marketplace with 10M listings, faceted search, and sellers editing listings concurrently with buyers browsing. Weigh denormalization tradeoffs explicitly.", "slice": "clean-deep", "kind_hint": "code", "source": "curated"}
+{"id": "cd-005", "text": "A startup has 8 months of runway, a working prototype, one paying pilot customer, and two acquisition feelers. Lay out the decision framework for raise vs. sell vs. bootstrap, including the information they should buy down first and how each path forecloses the others.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-006", "text": "Prove that sqrt(2) is irrational, then generalize: for which integers n is sqrt(n) irrational, with proof.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-007", "text": "Design an idempotent, exactly-once-looking payment webhook processor on top of an at-least-once queue. Address dedup storage growth, out-of-order delivery, and partial failure between charge and record.", "slice": "clean-deep", "kind_hint": "code", "source": "curated"}
+{"id": "cd-008", "text": "Compare three architectures for real-time collaborative text editing (OT server-authoritative, CRDT peer-to-peer, CRDT server-relayed) under: offline editing, undo semantics, permission revocation, and payload growth. Recommend one for a Notion-like product and defend it.", "slice": "clean-deep", "kind_hint": "comparison", "source": "curated"}
+{"id": "cd-009", "text": "Derive the expected number of comparisons for randomized quicksort and explain where the log factor comes from probabilistically.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-010", "text": "Write a thread-safe LRU cache in Python with O(1) get/put, then analyze its behavior under the GIL vs. free-threaded Python and what you would change for the latter.", "slice": "clean-deep", "kind_hint": "code", "source": "curated"}
+{"id": "cd-011", "text": "A city is choosing between congestion pricing, expanded bus rapid transit, and a bike-infrastructure buildout with a fixed budget. Build the evaluation framework: equity effects, elasticities, second-order land-use effects, and what pilot data would most change the ranking.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-012", "text": "Explain the FLP impossibility result precisely: what model it assumes, what it actually proves, and how Raft and Paxos live with it in practice.", "slice": "clean-deep", "kind_hint": "synthesis", "source": "curated"}
+{"id": "cd-013", "text": "Design a migration plan to move a 2TB single-Postgres monolith to a sharded setup with under 5 minutes of write downtime: shard key choice, dual-write vs. logical replication, backfill verification, and rollback points at each phase.", "slice": "clean-deep", "kind_hint": "code", "source": "curated"}
+{"id": "cd-014", "text": "Write a 300-word scene told entirely in dialogue where a negotiation quietly fails, then annotate the three structural choices doing the work.", "slice": "clean-deep", "kind_hint": "creative", "source": "curated"}
+{"id": "cd-015", "text": "Prove that the set of real numbers is uncountable, and explain why the same diagonal argument fails for the rationals.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-016", "text": "Design the consent, storage, and deletion architecture for a health-tracking app that must satisfy GDPR deletion, HIPAA-adjacent auditability, and offline-first sync simultaneously. Identify where these requirements conflict and resolve each conflict explicitly.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-017", "text": "An ML team's fraud model shows 0.94 AUC offline but approves 30% more fraud in production. Enumerate the plausible causes in order of likelihood, the diagnostic for each, and the monitoring you would add so the gap is caught before deploy next time.", "slice": "clean-deep", "kind_hint": "reasoning", "source": "curated"}
+{"id": "cd-018", "text": "Formally compare optimistic and pessimistic concurrency control: define the schedules each admits, prove one anomaly each prevents that the other allows, and give workload profiles where each dominates.", "slice": "clean-deep", "kind_hint": "comparison", "source": "curated"}
+{"id": "amb-001", "text": "Why is the sky blue?", "slice": "ambiguous", "kind_hint": "reasoning", "source": "curated"}
+{"id": "amb-002", "text": "Should I use Rust for my next project?", "slice": "ambiguous", "kind_hint": "comparison", "source": "curated"}
+{"id": "amb-003", "text": "Explain monads.", "slice": "ambiguous", "kind_hint": "synthesis", "source": "curated"}
+{"id": "amb-004", "text": "How do I make my website faster?", "slice": "ambiguous", "kind_hint": "code", "source": "curated"}
+{"id": "amb-005", "text": "What's the best sorting algorithm?", "slice": "ambiguous", "kind_hint": "comparison", "source": "curated"}
+{"id": "amb-006", "text": "Is P equal to NP?", "slice": "ambiguous", "kind_hint": "lookup", "source": "curated"}
+{"id": "amb-007", "text": "Write something about the ocean.", "slice": "ambiguous", "kind_hint": "creative", "source": "curated"}
+{"id": "amb-008", "text": "How does the internet work?", "slice": "ambiguous", "kind_hint": "synthesis", "source": "curated"}
+{"id": "amb-009", "text": "What should our startup name be?", "slice": "ambiguous", "kind_hint": "creative", "source": "curated"}
+{"id": "amb-010", "text": "Why did my deploy fail?", "slice": "ambiguous", "kind_hint": "code", "source": "curated"}
+{"id": "amb-011", "text": "Is it worth learning Haskell?", "slice": "ambiguous", "kind_hint": "comparison", "source": "curated"}
+{"id": "amb-012", "text": "Explain quantum computing.", "slice": "ambiguous", "kind_hint": "synthesis", "source": "curated"}
+{"id": "amb-013", "text": "How much should I charge for my SaaS?", "slice": "ambiguous", "kind_hint": "reasoning", "source": "curated"}
+{"id": "amb-014", "text": "What's wrong with this approach?", "slice": "ambiguous", "kind_hint": "other", "source": "curated"}
+{"id": "amb-015", "text": "Should we rewrite the backend?", "slice": "ambiguous", "kind_hint": "reasoning", "source": "curated"}
+{"id": "amb-016", "text": "Tell me about transformers.", "slice": "ambiguous", "kind_hint": "synthesis", "source": "curated"}
+{"id": "amb-017", "text": "How long will this migration take?", "slice": "ambiguous", "kind_hint": "other", "source": "curated"}
+{"id": "amb-018", "text": "What database should I use?", "slice": "ambiguous", "kind_hint": "comparison", "source": "curated"}
+{"id": "amb-019", "text": "Why is my code slow?", "slice": "ambiguous", "kind_hint": "code", "source": "curated"}
+{"id": "amb-020", "text": "Make this better: 'We provide innovative solutions for enterprise clients.'", "slice": "ambiguous", "kind_hint": "creative", "source": "curated"}
+{"id": "amb-021", "text": "Is free will compatible with determinism?", "slice": "ambiguous", "kind_hint": "reasoning", "source": "curated"}
+{"id": "amb-022", "text": "What am I missing in this plan?", "slice": "ambiguous", "kind_hint": "other", "source": "curated"}
+{"id": "amb-023", "text": "Explain Kubernetes.", "slice": "ambiguous", "kind_hint": "synthesis", "source": "curated"}
+{"id": "amb-024", "text": "Should this be a microservice?", "slice": "ambiguous", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ood-001", "text": "My sourdough starter smells like acetone after 5 days at 78F with 1:1:1 feedings every 24h — what is happening chemically and what feeding schedule fixes it?", "slice": "ood", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ood-002", "text": "In chess, explain why the Berlin Defense is considered drawish at top level but fine for club players.", "slice": "ood", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ood-003", "text": "Translate 'the early bird catches the worm' into idiomatic Japanese — an equivalent proverb, not a literal translation — and gloss it.", "slice": "ood", "kind_hint": "lookup", "source": "curated"}
+{"id": "ood-004", "text": "What knee angle range should I target on a bike fit if I get lateral knee pain after 60km rides?", "slice": "ood", "kind_hint": "lookup", "source": "curated"}
+{"id": "ood-005", "text": "Score this haiku against traditional kigo and kireji conventions, then write a corrected version: 'Silent autumn moon / the developer deploys / hotfix at midnight'", "slice": "ood", "kind_hint": "creative", "source": "curated"}
+{"id": "ood-006", "text": "Why does a violin's wolf tone happen and how do luthiers and players each mitigate it?", "slice": "ood", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ood-007", "text": "Plan a 4-day Kyoto itinerary in late November that avoids the worst momiji crowds while still hitting three top foliage sites.", "slice": "ood", "kind_hint": "other", "source": "curated"}
+{"id": "ood-008", "text": "In EU competition law, what is the essential facilities doctrine and how did Bronner narrow it?", "slice": "ood", "kind_hint": "lookup", "source": "curated"}
+{"id": "ood-009", "text": "Compare crop rotation and cover cropping for restoring nitrogen in a small organic farm, including a 3-year schedule for a tomato-heavy operation.", "slice": "ood", "kind_hint": "comparison", "source": "curated"}
+{"id": "ood-010", "text": "What's the difference between a 401k and a Roth IRA for someone earning $95k who expects higher income later?", "slice": "ood", "kind_hint": "comparison", "source": "curated"}
+{"id": "ood-011", "text": "Explain the offside trap in football, why high defensive lines make it risky, and how VAR changed the calculus.", "slice": "ood", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ood-012", "text": "Design a 12-week half-marathon plan for a runner with a 55-minute 10k, one weekly rest day mandatory, and a history of shin splints. Justify the load progression.", "slice": "ood", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ood-013", "text": "What wood species and joinery would you use for an outdoor bench in a humid climate with no metal fasteners, and why?", "slice": "ood", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ood-014", "text": "Name the ingredient that makes Sichuan peppercorns tingle.", "slice": "ood", "kind_hint": "lookup", "source": "curated"}
+{"id": "ood-015", "text": "Write a wedding toast for a sister who once set the kitchen on fire making toast — warm, 90 seconds, one callback.", "slice": "ood", "kind_hint": "creative", "source": "curated"}
+{"id": "ood-016", "text": "How should a beginner aquarist cycle a 20-gallon freshwater tank, and what ammonia/nitrite readings signal each phase?", "slice": "ood", "kind_hint": "synthesis", "source": "curated"}
+{"id": "ood-017", "text": "Under contract law, is a promise to keep an offer open enforceable without consideration? Cover the firm offer exception.", "slice": "ood", "kind_hint": "reasoning", "source": "curated"}
+{"id": "ood-018", "text": "What altitude do commercial jets cruise at and why that band specifically?", "slice": "ood", "kind_hint": "lookup", "source": "curated"}
