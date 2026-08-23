@@ -28,14 +28,18 @@ Read README.md for the experiment design and pipeline order.
 
 ## Ongoing
 
-Updated: 2026-08-22 by session -50 (initial scaffold)
+Updated: 2026-08-23 by session -50 — EXPERIMENT COMPLETE, see REPORT.md
 
-- Scaffold complete: config/schema/llm/heuristic/teacher/rungs/judge/students/regret +
-  5 pipeline scripts + curated 108-question eval set (24 quick / 24 thoughtful / 18 deep /
-  24 ambiguous / 18 ood — data/questions.jsonl), offline smoke passing.
-- BLOCKED on Tarun pasting ANTHROPIC_API_KEY into .env, then: run_rungs -> judge_answers ->
-  label_teacher x3 -> expand_questions -> label_teacher (train pool) x3 -> train_students x3
-  -> report.
-- Open extensions: OpenAI rung/teacher (add provider field to ModelSpec + dispatch in llm.py);
-  small-LM student via -3e's GKD stack; kind-prediction head; Mahogany-style merged/corrected
-  outcome signal once Bonsai traffic exists.
+- Full pipeline ran: 108-question outcome grid (324 answers + judged), 3 teachers labeled
+  eval + 475-question synthetic train pool, 6 students trained. Total spend ~$15.
+- Headline: every student BEATS its own teacher as a live router (sft:opus regret 0.213 vs
+  teacher:opus 0.556). Best-solver-as-best-teacher partially holds: opus students best (0.213),
+  haiku close (0.259), sonnet — the MID tier — worst (0.481). Distilled (soft-label) never beat
+  SFT — consistent small negative. Judge scores compress 8-10, so always-deep nearly matches
+  oracle on regret while always-thoughtful dominates score-per-dollar 806 vs 172 — the regret
+  metric and the efficiency metric pick opposite winners; say which you're optimizing.
+- Mid-run fixes (committed): rung max_tokens 4k→16k (adaptive thinking truncated 21 deep-rung
+  answers, biasing the oracle against opus), judge extract_json tolerates python-dict output.
+- DEFERRED (Tarun's no-new-spend directive): OpenAI rung/teacher, small-LM student via -3e's
+  GKD stack, kind-prediction head, real Bonsai-traffic outcome signal, judge-ensemble to
+  de-compress scores.
