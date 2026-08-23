@@ -11,7 +11,9 @@ SYSTEM = (
 def answer(question: Question, tier: str) -> RungAnswer:
     model = TIER_MODEL[tier]
     effort = TIER_EFFORT[tier]
-    result = complete(model, SYSTEM, question.text, max_tokens=4000, effort=effort)
+    # Adaptive thinking spends from max_tokens; 4000 truncated deep-rung answers and biased
+    # the oracle against opus. 16000 gives every rung room to finish.
+    result = complete(model, SYSTEM, question.text, max_tokens=16000, effort=effort)
     return RungAnswer(
         question_id=question.id,
         tier=tier,

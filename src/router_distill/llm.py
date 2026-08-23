@@ -79,4 +79,14 @@ def extract_json(text: str) -> dict:
     end = text.rfind("}")
     if start == -1 or end <= start:
         raise ValueError(f"no JSON object in: {text[:200]!r}")
-    return json.loads(text[start : end + 1])
+    slice_ = text[start : end + 1]
+    try:
+        return json.loads(slice_)
+    except json.JSONDecodeError:
+        # Models occasionally emit python-dict style (single quotes / True) — accept it.
+        import ast
+
+        value = ast.literal_eval(slice_)
+        if not isinstance(value, dict):
+            raise
+        return value

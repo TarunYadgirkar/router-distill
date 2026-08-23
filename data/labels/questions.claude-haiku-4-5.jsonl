@@ -1,0 +1,1 @@
+{"question_id": "cq-001", "teacher": "claude-haiku-4-5", "kind": "lookup", "tier_probs": {"quick": 0.98, "thoughtful": 0.01, "deep": 0.01}, "reason": "Straightforward historical fact, single date recall.", "cost_usd": 0.000604}
