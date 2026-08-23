@@ -31,8 +31,8 @@ Read README.md for the experiment design and pipeline order.
 Updated: 2026-08-22 by session -50 (initial scaffold)
 
 - Scaffold complete: config/schema/llm/heuristic/teacher/rungs/judge/students/regret +
-  5 pipeline scripts + curated 114-question eval set (24 quick / 24 thoughtful / 18 deep /
-  24 ambiguous / 18 ood... see data/questions.jsonl), offline smoke passing.
+  5 pipeline scripts + curated 108-question eval set (24 quick / 24 thoughtful / 18 deep /
+  24 ambiguous / 18 ood — data/questions.jsonl), offline smoke passing.
 - BLOCKED on Tarun pasting ANTHROPIC_API_KEY into .env, then: run_rungs -> judge_answers ->
   label_teacher x3 -> expand_questions -> label_teacher (train pool) x3 -> train_students x3
   -> report.
