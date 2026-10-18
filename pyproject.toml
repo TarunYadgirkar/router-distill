@@ -1,12 +1,22 @@
 [project]
 name = "router-distill"
-version = "0.1.0"
-description = "Distilled routing agent: can a tiny model imitate a frontier router, and is the best solver the best teacher?"
+version = "0.2.0"
+description = "Can a tiny classifier imitate an LLM router, and is the best solver the best routing teacher?"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.0",
     "numpy>=2.0",
     "scikit-learn>=1.5",
+    "scipy>=1.13",
+]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.9",
+    "pytest>=8.3",
+    "ruff>=0.8",
 ]
 
 [tool.uv]
@@ -18,3 +28,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/router_distill"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# The formatter wraps code; long string literals (report prose, prompts) are left intact.
+ignore = ["E501"]
