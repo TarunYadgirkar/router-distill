@@ -14,6 +14,8 @@ C_GRID = (1.0, 3.0, 10.0, 30.0, 100.0)
 CV_FOLDS = 5
 SEED = 0
 MAX_ITER = 10000
+# Converge well past the default (1e-4) so platform floating-point differences cannot flip a prediction.
+TOL = 1e-8
 EPS = 1e-6
 
 
@@ -40,7 +42,7 @@ def fit_softmax(features: csr_matrix, targets: np.ndarray, c: float) -> Logistic
     labels = np.repeat(np.arange(len(TIERS)), n)
     weights = targets.T.reshape(-1)
     keep = weights > 0
-    model = LogisticRegression(C=c, max_iter=MAX_ITER)
+    model = LogisticRegression(C=c, max_iter=MAX_ITER, tol=TOL)
     model.fit(stacked[keep], labels[keep], sample_weight=weights[keep])
     return model
 
