@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from joblib import Parallel, delayed
 from sklearn.model_selection import KFold
 
 from . import heuristic
@@ -28,6 +29,7 @@ from .stats import (
     summarize,
 )
 from .students import (
+    N_JOBS,
     TierStudent,
     adjust_prior,
     featurize,
@@ -224,13 +226,37 @@ def comparison_family(inp: Inputs, policies: dict[str, Policy], idx: np.ndarray)
     return rows
 
 
+def _bootstrap_fit(inp: Inputs, rows: np.ndarray, targets: dict) -> dict[str, dict]:
+    """Refit every student on one resample of the training pool and score it on the eval set."""
+    grid = inp.grid
+    texts = [q.text for q in inp.pool]
+    vecs = make_vectorizers()
+    x_train = featurize(vecs, [texts[i] for i in rows], fit=True)
+    x_eval = featurize(vecs, grid.texts)
+    out = {}
+    for (target, teacher), full in targets.items():
+        labels = inp.eval_labels[teacher]
+        y = full[rows]
+        probs = softmax_proba(fit_softmax(x_train, y, inp.students[(target, teacher)].c), x_eval)
+        for adjusted in (False, True):
+            p = adjust_prior(probs, y.mean(axis=0), target_prior(target, labels)) if adjusted else probs
+            choice = p.argmax(axis=1)
+            score = grid.pick(grid.score, choice).mean()
+            cost = grid.pick(grid.cost, choice).mean()
+            out[student_name(target, teacher, adjusted)] = {
+                "agreement": float((choice == teacher_choice(labels)).mean()),
+                "deep_share": float((choice == 2).mean()),
+                "score": float(score),
+                "gain": point_gain(grid, score, cost),
+            }
+    return out
+
+
 def training_bootstrap(inp: Inputs, n_boot: int = TRAIN_BOOT) -> dict:
     """Refit every student on bootstrap resamples of the training pool (same resamples for every
     teacher) to show how much of each result is training-set luck."""
-    grid = inp.grid
     rng = np.random.default_rng(SEED)
-    texts = [q.text for q in inp.pool]
-    records: dict[str, list[dict]] = {}
+    resamples = [rng.integers(0, len(inp.pool), len(inp.pool)) for _ in range(n_boot)]
     targets = {
         (target, teacher): one_hot([lab.tier for lab in inp.train_labels[teacher]])
         if target == "sft"
@@ -238,28 +264,11 @@ def training_bootstrap(inp: Inputs, n_boot: int = TRAIN_BOOT) -> dict:
         for teacher in TEACHERS
         for target in TARGETS
     }
-    for _ in range(n_boot):
-        rows = rng.integers(0, len(texts), len(texts))
-        vecs = make_vectorizers()
-        x_train = featurize(vecs, [texts[i] for i in rows], fit=True)
-        x_eval = featurize(vecs, grid.texts)
-        for (target, teacher), full in targets.items():
-            labels = inp.eval_labels[teacher]
-            y = full[rows]
-            probs = softmax_proba(fit_softmax(x_train, y, inp.students[(target, teacher)].c), x_eval)
-            for adjusted in (False, True):
-                p = adjust_prior(probs, y.mean(axis=0), target_prior(target, labels)) if adjusted else probs
-                choice = p.argmax(axis=1)
-                score = grid.pick(grid.score, choice).mean()
-                cost = grid.pick(grid.cost, choice).mean()
-                records.setdefault(student_name(target, teacher, adjusted), []).append(
-                    {
-                        "agreement": float((choice == teacher_choice(labels)).mean()),
-                        "deep_share": float((choice == 2).mean()),
-                        "score": float(score),
-                        "gain": point_gain(grid, score, cost),
-                    }
-                )
+    fits = Parallel(n_jobs=N_JOBS)(delayed(_bootstrap_fit)(inp, rows, targets) for rows in resamples)
+    records: dict[str, list[dict]] = {}
+    for fit in fits:
+        for name, row in fit.items():
+            records.setdefault(name, []).append(row)
     out = {}
     for name, recs in records.items():
         out[name] = {

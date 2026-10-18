@@ -77,7 +77,7 @@ The tier names (quick / thoughtful / deep) and the regex baseline come from two 
 - **Uneven generation settings.** 303 answers ran with `max_tokens` 4,000; 21 that had truncated were re-run at 16,000. None of the kept 4,000-token answers hit the cap, but one deep answer (cd-018) is still cut off at 16,000 and scored 4. Dropping it changes no conclusion (REPORT.md section 7).
 - **Train and eval differ.** The synthetic questions are about 2.5 times as long as the curated ones (median 193 vs 80 characters) and labelled deep far more often. This is the main reason eval agreement trails cross-validation agreement.
 - **The prior correction peeks.** The `+prior` students are reweighted to their teacher's tier distribution on the eval questions (three numbers). In production you would estimate it from a teacher-labelled sample of live traffic.
-- **Tuned operating points are in-sample.** REPORT.md section 2 picks thresholds on the eval set itself, which flatters the routers; even so, none clears zero.
+- **Tuned operating points are in-sample.** REPORT.md section 2 picks thresholds on the eval set itself, which flatters the routers; even so, no tuned point has a 95% interval above zero.
 - **Not deterministic from scratch.** Sonnet 5 and Opus 5 reject a temperature setting, so re-running the API steps gives different answers, scores and labels. The offline analysis is deterministic.
 - **Latency** in REPORT.md was measured with four concurrent requests and SDK retries, so it is indicative only.
 
@@ -87,8 +87,8 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12. No API key is needed 
 
 ```
 uv sync
-make test        # 30 offline tests, about 2 s
-make reproduce   # retrain the 6 students, rebuild REPORT.md, results/metrics.json, this README's results block and the figure (about 5 min, under 300 MB RAM)
+make test        # offline tests, about 2 s
+make reproduce   # retrain the 6 students, rebuild REPORT.md, results/metrics.json, this README's results block and the figure (about 2 min on 4 cores, no API calls)
 make check       # rebuild and fail if REPORT.md, README.md's results block or results/metrics.json differ from HEAD
 make embed       # optional: encoder students (installs torch; needs all-MiniLM-L6-v2 in the Hugging Face cache)
 ```

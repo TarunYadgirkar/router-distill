@@ -10,7 +10,7 @@ lint:
 	uv run ruff check src scripts tests
 	uv run ruff format --check src scripts tests
 
-# Offline: retrain the students and rebuild REPORT.md, results/metrics.json, the README results block and the figure (~5 min, no API calls).
+# Offline: retrain the students and rebuild REPORT.md, results/metrics.json, the README results block and the figure (~2 min on 4 cores, no API calls).
 reproduce: train report figure
 
 train:

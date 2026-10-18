@@ -1,8 +1,10 @@
+import os
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from joblib import Parallel, delayed
 from scipy.sparse import csr_matrix, hstack, vstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -16,6 +18,8 @@ SEED = 0
 MAX_ITER = 10000
 # Converge well past the default (1e-4) so platform floating-point differences cannot flip a prediction.
 TOL = 1e-8
+# Independent fits run in parallel; capped so the rebuild leaves cores for other work on the machine.
+N_JOBS = min(4, os.cpu_count() or 1)
 EPS = 1e-6
 
 
@@ -115,12 +119,20 @@ def make_folds(texts: list[str], n_folds: int = CV_FOLDS, seed: int = SEED) -> l
     return folds
 
 
-def out_of_fold(folds: list[Fold], targets: np.ndarray, c: float) -> np.ndarray:
-    probs = np.zeros_like(targets, dtype=float)
-    for fold in folds:
-        model = fit_softmax(fold.x_train, targets[fold.train], c)
-        probs[fold.test] = softmax_proba(model, fold.x_test)
-    return probs
+def _fold_proba(fold: Fold, targets: np.ndarray, c: float) -> np.ndarray:
+    return softmax_proba(fit_softmax(fold.x_train, targets[fold.train], c), fold.x_test)
+
+
+def out_of_fold_grid(
+    folds: list[Fold], targets: np.ndarray, grid: tuple[float, ...]
+) -> dict[float, np.ndarray]:
+    """Out-of-fold probabilities for every C, fitting the len(grid) x len(folds) models in parallel."""
+    jobs = [(c, fold) for c in grid for fold in folds]
+    parts = Parallel(n_jobs=N_JOBS)(delayed(_fold_proba)(fold, targets, c) for c, fold in jobs)
+    out = {c: np.zeros_like(targets, dtype=float) for c in grid}
+    for (c, fold), probs in zip(jobs, parts, strict=True):
+        out[c][fold.test] = probs
+    return out
 
 
 def cross_entropy(targets: np.ndarray, probs: np.ndarray) -> float:
@@ -136,10 +148,8 @@ def kl_divergence(p: np.ndarray, q: np.ndarray) -> float:
 
 def tune_c(folds: list[Fold], targets: np.ndarray, grid: tuple[float, ...] = C_GRID) -> tuple[float, dict]:
     """Pick C by out-of-fold cross-entropy against the student's own training target."""
-    table = {}
-    for c in grid:
-        oof = out_of_fold(folds, targets, c)
-        table[c] = {"cross_entropy": cross_entropy(targets, oof), "oof": oof}
+    oof = out_of_fold_grid(folds, targets, grid)
+    table = {c: {"cross_entropy": cross_entropy(targets, oof[c]), "oof": oof[c]} for c in grid}
     best = min(table, key=lambda c: table[c]["cross_entropy"])
     return best, table
 
