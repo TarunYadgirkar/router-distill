@@ -1,4 +1,4 @@
-from .config import KINDS, TIERS
+from .config import KINDS, LABEL_MAX_TOKENS, TIERS
 from .llm import complete, extract_json
 from .schema import Question, TeacherLabel
 
@@ -19,7 +19,9 @@ SYSTEM = (
 
 
 def label(question: Question, teacher: str) -> TeacherLabel:
-    result = complete(teacher, SYSTEM, f"Question: {question.text}", max_tokens=1500, effort="low")
+    result = complete(
+        teacher, SYSTEM, f"Question: {question.text}", max_tokens=LABEL_MAX_TOKENS, effort="low"
+    )
     parsed = extract_json(result.text)
 
     raw = parsed.get("tier_probs", {})
@@ -40,4 +42,7 @@ def label(question: Question, teacher: str) -> TeacherLabel:
         tier_probs=probs,
         reason=str(parsed.get("reason", "")),
         cost_usd=result.cost_usd,
+        stop_reason=result.stop_reason,
+        response_id=result.response_id,
+        created_at=result.created_at,
     )

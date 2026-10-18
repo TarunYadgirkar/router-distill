@@ -1,19 +1,21 @@
+import ast
 import json
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import anthropic
 
 from .config import MODELS, cost_usd
+from .schema import utc_now
 
 _client: anthropic.Anthropic | None = None
 
 
 def _load_project_env() -> None:
-    # Tarun pastes the key into the project .env by hand (agent hooks block .env writes);
-    # load it here so scripts work without exporting anything.
+    # The key lives in the project .env, pasted by hand; load it here so scripts work without exporting.
     if os.environ.get("ANTHROPIC_API_KEY"):
         return
     env_path = Path(__file__).resolve().parents[2] / ".env"
@@ -34,25 +36,30 @@ def client() -> anthropic.Anthropic:
     return _client
 
 
+@dataclass
 class CallResult:
-    def __init__(self, text: str, input_tokens: int, output_tokens: int, latency_ms: int, cost: float):
-        self.text = text
-        self.input_tokens = input_tokens
-        self.output_tokens = output_tokens
-        self.latency_ms = latency_ms
-        self.cost_usd = cost
+    text: str
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    cost_usd: float
+    stop_reason: str | None = None
+    response_id: str | None = None
+    max_tokens: int | None = None
+    created_at: str | None = None
 
 
 def complete(
     model: str,
     system: str,
     user: str,
-    max_tokens: int = 4000,
+    max_tokens: int,
     effort: str | None = None,
 ) -> CallResult:
     kwargs: dict[str, Any] = {}
     if effort is not None and MODELS[model].supports_effort:
         kwargs["output_config"] = {"effort": effort}
+    created_at = utc_now()
     start = time.monotonic()
     response = client().messages.create(
         model=model,
@@ -66,27 +73,39 @@ def complete(
         raise RuntimeError(f"{model} refused: {response.stop_details}")
     text = "".join(b.text for b in response.content if b.type == "text")
     return CallResult(
-        text,
-        response.usage.input_tokens,
-        response.usage.output_tokens,
-        latency_ms,
-        cost_usd(model, response.usage.input_tokens, response.usage.output_tokens),
+        text=text,
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
+        latency_ms=latency_ms,
+        cost_usd=cost_usd(model, response.usage.input_tokens, response.usage.output_tokens),
+        stop_reason=response.stop_reason,
+        response_id=response.id,
+        max_tokens=max_tokens,
+        created_at=created_at,
     )
 
 
 def extract_json(text: str) -> dict:
-    start = text.find("{")
-    end = text.rfind("}")
+    """First JSON object in a model reply: tolerates prose, code fences, trailing text and
+    python-dict style ({'a': True})."""
+    decoder = json.JSONDecoder()
+    for start, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+
+    start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
         raise ValueError(f"no JSON object in: {text[:200]!r}")
-    slice_ = text[start : end + 1]
     try:
-        return json.loads(slice_)
-    except json.JSONDecodeError:
-        # Models occasionally emit python-dict style (single quotes / True) — accept it.
-        import ast
-
-        value = ast.literal_eval(slice_)
-        if not isinstance(value, dict):
-            raise
-        return value
+        value = ast.literal_eval(text[start : end + 1])
+    except (ValueError, SyntaxError) as e:
+        raise ValueError(f"unparseable object in: {text[:200]!r}") from e
+    if not isinstance(value, dict):
+        raise ValueError(f"not an object: {text[:200]!r}")
+    return value

@@ -1,4 +1,4 @@
-from .config import JUDGE_MODEL
+from .config import JUDGE_MAX_TOKENS, JUDGE_MODEL
 from .llm import complete, extract_json
 from .schema import JudgedAnswer, RungAnswer
 
@@ -13,9 +13,11 @@ SYSTEM = (
 )
 
 
-def judge(question_text: str, rung: RungAnswer) -> JudgedAnswer:
+def judge(
+    question_text: str, rung: RungAnswer, judge_model: str = JUDGE_MODEL, judge_pass: int = 0
+) -> JudgedAnswer:
     user = f"Question:\n{question_text}\n\nAnswer:\n{rung.answer}"
-    result = complete(JUDGE_MODEL, SYSTEM, user, max_tokens=2000, effort="medium")
+    result = complete(judge_model, SYSTEM, user, max_tokens=JUDGE_MAX_TOKENS, effort="medium")
     parsed = extract_json(result.text)
     score = float(parsed["score"])
     if not 0 <= score <= 10:
@@ -27,4 +29,10 @@ def judge(question_text: str, rung: RungAnswer) -> JudgedAnswer:
         punt=bool(parsed.get("punt", False)),
         judge_cost_usd=result.cost_usd,
         rationale=str(parsed.get("rationale", "")),
+        judge=judge_model,
+        sample=rung.sample,
+        judge_pass=judge_pass,
+        stop_reason=result.stop_reason,
+        response_id=result.response_id,
+        created_at=result.created_at,
     )

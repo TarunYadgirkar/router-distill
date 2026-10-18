@@ -1,4 +1,4 @@
-from .config import TIER_EFFORT, TIER_MODEL
+from .config import RUNG_MAX_TOKENS, TIER_EFFORT, TIER_MODEL
 from .llm import complete
 from .schema import Question, RungAnswer
 
@@ -8,12 +8,10 @@ SYSTEM = (
 )
 
 
-def answer(question: Question, tier: str) -> RungAnswer:
+def answer(question: Question, tier: str, sample: int = 0) -> RungAnswer:
     model = TIER_MODEL[tier]
     effort = TIER_EFFORT[tier]
-    # Adaptive thinking spends from max_tokens; 4000 truncated deep-rung answers and biased
-    # the oracle against opus. 16000 gives every rung room to finish.
-    result = complete(model, SYSTEM, question.text, max_tokens=16000, effort=effort)
+    result = complete(model, SYSTEM, question.text, max_tokens=RUNG_MAX_TOKENS, effort=effort)
     return RungAnswer(
         question_id=question.id,
         tier=tier,
@@ -24,4 +22,9 @@ def answer(question: Question, tier: str) -> RungAnswer:
         output_tokens=result.output_tokens,
         latency_ms=result.latency_ms,
         cost_usd=result.cost_usd,
+        sample=sample,
+        max_tokens=result.max_tokens,
+        stop_reason=result.stop_reason,
+        response_id=result.response_id,
+        created_at=result.created_at,
     )
