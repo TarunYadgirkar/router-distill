@@ -2,7 +2,7 @@
 
 An LLM router decides, per question, whether a cheap fast model, a mid model or the strongest model should answer. This repo tests whether that decision can be distilled into a classifier that costs nothing to run, and whether the strongest model is also the best teacher for it.
 
-**Result: on this eval set no router, LLM or distilled, does better than splitting traffic at random between two fixed models at the same average cost.** The judge rates the strongest model's answers 9 or 10 on 101 of 108 questions, so there is almost nothing for a router to win. The first version of this repo reported that "every student beats its teacher"; that came from a metric that ignores cost, and it does not survive a cost-aware comparison.
+**Result: on this eval set every LLM router and every distilled student does worse than splitting traffic at random between two fixed models at the same average cost, and thresholds tuned on the eval set itself find no point that is reliably better.** The judge rates the strongest model's answers 9 or 10 on 101 of 108 questions, so there is almost nothing for a router to win. The first version of this repo reported that "every student beats its teacher"; that came from a metric that ignores cost, and it does not survive a cost-aware comparison.
 
 ![Score vs cost for every router, and each router's gain over a cost-matched random split with 95% intervals](assets/generated/frontier.png)
 
@@ -89,11 +89,11 @@ Requires [uv](https://docs.astral.sh/uv/) and Python 3.12. No API key is needed 
 uv sync
 make test        # 30 offline tests, about 2 s
 make reproduce   # retrain the 6 students, rebuild REPORT.md, results/metrics.json, this README's results block and the figure (about 5 min, under 300 MB RAM)
-make check       # rebuild and fail if REPORT.md, README.md or results/metrics.json differ from the committed copies
+make check       # rebuild and fail if REPORT.md, README.md's results block or results/metrics.json differ from HEAD
 make embed       # optional: encoder students (installs torch; needs all-MiniLM-L6-v2 in the Hugging Face cache)
 ```
 
-CI runs `make lint`, `make test` and `make check` on every push.
+CI runs `make lint`, `make test` and `make check` on every push. On macOS the rebuild is byte-identical; on Linux everything matches except the training-set bootstrap table (section 4 of REPORT.md), whose 300 refits differ in the third decimal because the two platforms use different BLAS libraries, so `make check` allows that table a small tolerance.
 
 ### Re-running the paid steps
 

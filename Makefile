@@ -22,9 +22,10 @@ report:
 figure:
 	uv run scripts/plot.py
 
-# CI: fail if a clean rebuild does not reproduce the committed report byte for byte.
+# CI: fail if a clean rebuild does not reproduce the committed outputs (see scripts/check_reproduction.py
+# for the one tolerance it allows). Run on a clean checkout: it compares against HEAD.
 check: train report
-	git diff --exit-code REPORT.md README.md results/metrics.json
+	uv run scripts/check_reproduction.py
 
 # Optional encoder students; needs torch + transformers and the all-MiniLM-L6-v2 weights in the HF cache.
 embed:

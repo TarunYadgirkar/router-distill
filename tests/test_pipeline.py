@@ -171,3 +171,20 @@ def test_rungs_and_judge_passes_key_by_sample_and_pass(tmp_path, monkeypatch):
     graded = read_jsonl(judged, JudgedAnswer)
     assert len(graded) == 12
     assert sorted({j.judge_pass for j in graded}) == [0, 1]
+
+
+def test_interrupt_cancels_queued_calls():
+    from router_distill.runner import run_parallel
+
+    started = []
+
+    def work(i):
+        started.append(i)
+        return i
+
+    def on_result(item, result):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        run_parallel(range(50), work, on_result, workers=1)
+    assert len(started) < 50

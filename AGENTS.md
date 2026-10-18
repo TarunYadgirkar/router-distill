@@ -5,7 +5,7 @@ Research code for distilling an LLM router's tier choices into a tiny classifier
 ## Rules
 
 - Python 3.12 and uv. `uv sync` installs; run scripts as `uv run scripts/<name>.py` or through the Makefile.
-- `make lint test check` must pass before a commit. `make check` retrains the students and fails if REPORT.md, README.md's results block or results/metrics.json changes, so commit regenerated outputs together with the code that changed them.
+- `make lint test check` must pass before a commit. `make check` retrains the students and fails if REPORT.md, README.md's results block or results/metrics.json differ from HEAD (with a small tolerance for the training-set bootstrap, see scripts/check_reproduction.py), so commit regenerated outputs together with the code that changed them.
 - REPORT.md, results/*.json and the block between the `results:start`/`results:end` markers in README.md are generated. Edit `scripts/report.py` or the analysis modules, never the outputs.
 - All model calls go through `complete()` in `src/router_distill/llm.py`. Scripts that call the API append each row as it returns, skip existing rows on re-run, and take `--limit`.
 - API spend needs the owner's approval first. Estimate it from the per-call costs in REPORT.md section 8 and say it before running. The offline analysis costs nothing.
