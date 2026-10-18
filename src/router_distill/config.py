@@ -8,10 +8,11 @@ SLICES = ["clean-quick", "clean-thoughtful", "clean-deep", "ambiguous", "ood"]
 @dataclass(frozen=True)
 class ModelSpec:
     id: str
-    tier: str
+    tier: str | None  # rung it answers at; None for a model used only as a judge or teacher
     input_per_mtok: float
     output_per_mtok: float
     supports_effort: bool
+    name: str
 
 
 # List prices checked on PRICES_AS_OF against PRICE_SOURCE. Claude Sonnet 5 launched at $2/$10 as
@@ -22,11 +23,13 @@ PRICES_AS_OF = "2026-10-18"
 PRICE_SOURCE = "https://platform.claude.com/docs/en/about-claude/pricing"
 BATCH_DISCOUNT = 0.5
 
-# Rung ladder: quick / thoughtful / deep. Haiku 4.5 rejects output_config.effort.
+# Rung ladder: quick / thoughtful / deep. Haiku 4.5 rejects output_config.effort. Claude Sonnet 5.5 is
+# listed for the planned second judge (README "Next steps"); it answers at no rung.
 MODELS = {
-    "claude-haiku-4-5": ModelSpec("claude-haiku-4-5", "quick", 1.0, 5.0, False),
-    "claude-sonnet-5": ModelSpec("claude-sonnet-5", "thoughtful", 2.0, 10.0, True),
-    "claude-opus-5": ModelSpec("claude-opus-5", "deep", 5.0, 25.0, True),
+    "claude-haiku-4-5": ModelSpec("claude-haiku-4-5", "quick", 1.0, 5.0, False, "Claude Haiku 4.5"),
+    "claude-sonnet-5": ModelSpec("claude-sonnet-5", "thoughtful", 2.0, 10.0, True, "Claude Sonnet 5"),
+    "claude-opus-5": ModelSpec("claude-opus-5", "deep", 5.0, 25.0, True, "Claude Opus 5"),
+    "claude-sonnet-5-5": ModelSpec("claude-sonnet-5-5", None, 2.0, 10.0, True, "Claude Sonnet 5.5"),
 }
 
 # Prices v0.1 used when it wrote each row's cost_usd. Teacher labels store only cost_usd (no token
@@ -37,7 +40,7 @@ RECORDED_PRICES = {
     "claude-opus-5": (5.0, 25.0),
 }
 
-TIER_MODEL = {spec.tier: spec.id for spec in MODELS.values()}
+TIER_MODEL = {spec.tier: spec.id for spec in MODELS.values() if spec.tier is not None}
 TIER_EFFORT = {"quick": "low", "thoughtful": "medium", "deep": "high"}
 
 TEACHERS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"]

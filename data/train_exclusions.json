@@ -4,5 +4,6 @@
   {"train_id": "syn-0021", "eval_id": "cq-006", "reason": "same question with a contraction"},
   {"train_id": "syn-0268", "eval_id": "cd-001", "reason": "paraphrase of the same proof, with a follow-up added"},
   {"train_id": "syn-0280", "eval_id": "ct-006", "reason": "paraphrase of the same JavaScript float question"},
-  {"train_id": "syn-0341", "eval_id": "cd-007", "reason": "same design task (exactly-once payments over an at-least-once queue); borderline, excluded to be safe"}
+  {"train_id": "syn-0341", "eval_id": "cd-007", "reason": "same design task (exactly-once payments over an at-least-once queue); borderline, excluded to be safe"},
+  {"train_id": "syn-0439", "eval_id": "ood-001", "reason": "same diagnosis-and-fix question (sourdough starter smelling of acetone / nail polish remover); found in review by embedding similarity"}
 ]

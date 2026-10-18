@@ -7,6 +7,9 @@ from router_distill.schema import JudgedAnswer, Question, RungAnswer
 from router_distill.stats import (
     Policy,
     bootstrap_indices,
+    candidate_choices,
+    curve,
+    cv_tuned,
     holm,
     p_two_sided,
     quantile_choice,
@@ -83,3 +86,15 @@ def test_holm_and_bootstrap_p():
     assert holm([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])
     assert p_two_sided(np.zeros(100)) == 1.0
     assert p_two_sided(np.ones(100)) == pytest.approx(0.01)
+
+
+def test_cv_tuned_routes_every_question_with_a_rule_chosen_without_it():
+    rng = np.random.default_rng(1)
+    grid = make_grid([tuple(rng.integers(4, 11, 3)) for _ in range(40)])
+    probs = rng.dirichlet(np.ones(3), size=grid.n)
+    policy = Policy("r", "student", probs.argmax(axis=1), np.zeros(grid.n), probs)
+    idx = bootstrap_indices(grid.n, 200)
+    tuned = cv_tuned(grid, policy, idx)
+    assert sum(tuned["routes"]) == grid.n
+    assert candidate_choices(probs).shape == (101 + 41 * 41, grid.n)
+    assert set(curve(grid, policy, idx)["cv_tuned_gain"]) == set(tuned)

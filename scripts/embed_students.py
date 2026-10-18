@@ -9,17 +9,13 @@ Usage: uv run --group embed scripts/embed_students.py   (or `make embed`)
 """
 
 import json
-import os
+from importlib.metadata import version
 
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+import numpy as np
+from scipy.sparse import csr_matrix
+from sklearn.model_selection import KFold
 
-import numpy as np  # noqa: E402
-import torch  # noqa: E402
-import transformers  # noqa: E402
-from scipy.sparse import csr_matrix  # noqa: E402
-from sklearn.model_selection import KFold  # noqa: E402
-
-from router_distill.analysis import (  # noqa: E402
+from router_distill.analysis import (
     TARGETS,
     load_inputs,
     rounded,
@@ -27,10 +23,11 @@ from router_distill.analysis import (  # noqa: E402
     teacher_choice,
     teacher_probs,
 )
-from router_distill.config import SHORT, TEACHERS  # noqa: E402
-from router_distill.data import ROOT  # noqa: E402
-from router_distill.stats import Policy, bootstrap_indices, summarize  # noqa: E402
-from router_distill.students import (  # noqa: E402
+from router_distill.config import SHORT, TEACHERS
+from router_distill.data import ROOT
+from router_distill.encoder import ENCODER, embed
+from router_distill.stats import Policy, bootstrap_indices, summarize
+from router_distill.students import (
     C_GRID,
     CV_FOLDS,
     SEED,
@@ -43,25 +40,7 @@ from router_distill.students import (  # noqa: E402
     softmax_proba,
 )
 
-ENCODER = "sentence-transformers/all-MiniLM-L6-v2"
 OUT = ROOT / "results/embedding_students.json"
-BATCH = 64
-
-
-def embed(texts: list[str]) -> np.ndarray:
-    tokenizer = transformers.AutoTokenizer.from_pretrained(ENCODER)
-    model = transformers.AutoModel.from_pretrained(ENCODER).eval()
-    chunks = []
-    with torch.no_grad():
-        for start in range(0, len(texts), BATCH):
-            batch = tokenizer(
-                texts[start : start + BATCH], padding=True, truncation=True, return_tensors="pt"
-            )
-            hidden = model(**batch).last_hidden_state
-            mask = batch["attention_mask"].unsqueeze(-1).float()
-            pooled = (hidden * mask).sum(dim=1) / mask.sum(dim=1)
-            chunks.append(torch.nn.functional.normalize(pooled, dim=1).numpy())
-    return np.vstack(chunks)
 
 
 def cv_probs(x: csr_matrix, y: np.ndarray, c: float) -> np.ndarray:
@@ -72,7 +51,6 @@ def cv_probs(x: csr_matrix, y: np.ndarray, c: float) -> np.ndarray:
 
 
 def main() -> None:
-    torch.manual_seed(SEED)
     inp = load_inputs()
     grid = inp.grid
     pool_x = csr_matrix(embed([q.text for q in inp.pool]))
@@ -114,8 +92,8 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     result = {
         "encoder": ENCODER,
-        "torch": torch.__version__,
-        "transformers": transformers.__version__,
+        "torch": version("torch"),
+        "transformers": version("transformers"),
         "device": "cpu",
         "students": rows,
     }

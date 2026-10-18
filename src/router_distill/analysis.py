@@ -9,9 +9,18 @@ from joblib import Parallel, delayed
 from sklearn.model_selection import KFold
 
 from . import heuristic
-from .config import PRICE_SOURCE, PRICES_AS_OF, RECORDED_PRICES, SHORT, TEACHERS, TIERS, reprice_recorded
+from .config import (
+    JUDGE_MODEL,
+    PRICE_SOURCE,
+    PRICES_AS_OF,
+    RECORDED_PRICES,
+    SHORT,
+    TEACHERS,
+    TIERS,
+    reprice_recorded,
+)
 from .data import ROOT, load_answers, load_eval, load_exclusions, load_judged, load_labels, load_train_pool
-from .diagnostics import judge_diagnostics, power, sensitivity, spend
+from .diagnostics import cost_mechanism, judge_diagnostics, power, sensitivity, spend
 from .grid import OutcomeGrid, build_grid
 from .schema import Question, TeacherLabel
 from .stats import (
@@ -29,11 +38,14 @@ from .stats import (
     summarize,
 )
 from .students import (
+    C_GRID,
     N_JOBS,
     TierStudent,
     adjust_prior,
     featurize,
     fit_softmax,
+    fixed_step_proba,
+    fixed_step_softmax,
     kl_divergence,
     make_folds,
     make_vectorizers,
@@ -49,6 +61,7 @@ TARGETS = ("sft", "distilled")
 TRAIN_BOOT = 50
 OUTCOME_CV_FOLDS = 10
 OUTCOME_C = 10.0
+FIXED_STEP = "v0.1 fixed-step"
 
 
 def rounded(value, digits: int = 6):
@@ -62,6 +75,26 @@ def rounded(value, digits: int = 6):
     return value
 
 
+@dataclass(frozen=True)
+class GridKey:
+    """Which answers and judgments make up the outcome grid; the committed run is the default."""
+
+    judge: str = JUDGE_MODEL
+    judge_pass: int = 0
+    sample: int = 0
+
+    @property
+    def is_default(self) -> bool:
+        return self == COMMITTED_RUN
+
+    @property
+    def tag(self) -> str:
+        return f"{self.judge}.pass{self.judge_pass}.sample{self.sample}"
+
+
+COMMITTED_RUN = GridKey()
+
+
 @dataclass
 class Inputs:
     grid: OutcomeGrid
@@ -69,10 +102,18 @@ class Inputs:
     pool: list[Question]
     train_labels: dict[str, list[TeacherLabel]]  # aligned with pool
     students: dict[tuple[str, str], TierStudent]
+    key: GridKey
 
 
-def load_inputs(models_dir: Path = MODELS_DIR) -> Inputs:
-    grid = build_grid(load_eval(), load_answers(), load_judged())
+def load_inputs(models_dir: Path = MODELS_DIR, key: GridKey = COMMITTED_RUN) -> Inputs:
+    grid = build_grid(
+        load_eval(),
+        load_answers(),
+        load_judged(),
+        sample=key.sample,
+        judge=key.judge,
+        judge_pass=key.judge_pass,
+    )
     eval_labels, train_labels, students = {}, {}, {}
     pool = load_train_pool()
     for teacher in TEACHERS:
@@ -85,7 +126,7 @@ def load_inputs(models_dir: Path = MODELS_DIR) -> Inputs:
             if not path.exists():
                 raise SystemExit(f"missing {path}: run `make train` (scripts/train_students.py) first")
             students[(target, teacher)] = TierStudent.load(path)
-    return Inputs(grid, eval_labels, pool, train_labels, students)
+    return Inputs(grid, eval_labels, pool, train_labels, students, key)
 
 
 def teacher_probs(labels: list[TeacherLabel]) -> np.ndarray:
@@ -287,8 +328,64 @@ def training_bootstrap(inp: Inputs, n_boot: int = TRAIN_BOOT) -> dict:
     return {"n_boot": n_boot, "students": out, "best_teacher_counts": best_counts}
 
 
-def run(models_dir: Path = MODELS_DIR, n_boot: int = N_BOOT, train_boot: int = TRAIN_BOOT) -> dict:
-    inp = load_inputs(models_dir)
+def _fit_variant(x_train, x_eval, y: np.ndarray, c) -> tuple[np.ndarray, np.ndarray]:
+    """(train probabilities, eval probabilities) for one regularisation setting."""
+    if c == FIXED_STEP:
+        weights = fixed_step_softmax(x_train, y)
+        return fixed_step_proba(weights, x_train), fixed_step_proba(weights, x_eval)
+    model = fit_softmax(x_train, y, c)
+    return softmax_proba(model, x_train), softmax_proba(model, x_eval)
+
+
+def regularisation_sensitivity(inp: Inputs, policies: dict[str, Policy], idx: np.ndarray) -> list[dict]:
+    """Refit every as-trained student at each C in the grid and with v0.1's fixed-step trainer, and
+    compare each with its teacher. C is tuned for imitation (cross-entropy against the teacher), not for
+    routing value, so this shows how much the student-vs-teacher answer rests on that choice."""
+    texts = [q.text for q in inp.pool]
+    vecs = make_vectorizers()
+    x_train = featurize(vecs, texts, fit=True)
+    x_eval = featurize(vecs, inp.grid.texts)
+    targets = {
+        (target, teacher): one_hot([lab.tier for lab in inp.train_labels[teacher]])
+        if target == "sft"
+        else soft_targets([lab.tier_probs for lab in inp.train_labels[teacher]])
+        for teacher in TEACHERS
+        for target in TARGETS
+    }
+    jobs = [(key, c) for key in targets for c in (*C_GRID, FIXED_STEP)]
+    fits = Parallel(n_jobs=N_JOBS)(delayed(_fit_variant)(x_train, x_eval, targets[key], c) for key, c in jobs)
+    rows = []
+    for ((target, teacher), c), (train_probs, probs) in zip(jobs, fits, strict=True):
+        hard = targets[("sft", teacher)].argmax(axis=1)
+        name = student_name(target, teacher, False)
+        policy = Policy(f"{name}@{c}", "student", probs.argmax(axis=1), np.zeros(inp.grid.n), probs)
+        summary = summarize(inp.grid, policy, idx)
+        versus = compare(inp.grid, policy, policies[f"teacher:{SHORT[teacher]}"], idx)
+        rows.append(
+            {
+                "student": name,
+                "c": c,
+                "tuned": c == inp.students[(target, teacher)].c,
+                "deep_share": float((policy.choice == 2).mean()),
+                "train_agreement": float((train_probs.argmax(axis=1) == hard).mean()),
+                "eval_agreement": float((policy.choice == teacher_choice(inp.eval_labels[teacher])).mean()),
+                "gain": summary["gain"],
+                "gain_ci": summary["gain_ci"],
+                "minus_teacher": versus["gain_diff"],
+                "minus_teacher_ci": versus["gain_diff_ci"],
+                "minus_teacher_p": versus["p"],
+            }
+        )
+    return rows
+
+
+def run(
+    models_dir: Path = MODELS_DIR,
+    n_boot: int = N_BOOT,
+    train_boot: int = TRAIN_BOOT,
+    key: GridKey = COMMITTED_RUN,
+) -> dict:
+    inp = load_inputs(models_dir, key)
     grid = inp.grid
     idx = bootstrap_indices(grid.n, n_boot)
     policies = build_policies(inp)
@@ -306,6 +403,9 @@ def run(models_dir: Path = MODELS_DIR, n_boot: int = N_BOOT, train_boot: int = T
             "recorded_prices": RECORDED_PRICES,
             "n_boot": n_boot,
             "seed": SEED,
+            "judge": key.judge,
+            "judge_pass": key.judge_pass,
+            "sample": key.sample,
         },
         "fixed": {
             t: {"cost": float(grid.cost[:, i].mean()), "score": float(grid.score[:, i].mean())}
@@ -318,6 +418,8 @@ def run(models_dir: Path = MODELS_DIR, n_boot: int = N_BOOT, train_boot: int = T
         "fidelity": fidelity(inp, by_name),
         "comparisons": comparisons,
         "training_bootstrap": training_bootstrap(inp, train_boot),
+        "regularisation": regularisation_sensitivity(inp, by_name, idx),
+        "cost_mechanism": cost_mechanism(grid, by_name, idx),
         "diagnostics": judge_diagnostics(grid),
         "power": power(grid, by_name, comparisons),
         "sensitivity": sensitivity(inp, policies),

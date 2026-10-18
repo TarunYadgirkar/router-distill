@@ -4,9 +4,11 @@ outcome-scored eval set). Paid API calls.
 Usage: uv run scripts/expand_questions.py --n 500 [--limit BATCHES] [--workers 4]
 
 New questions are appended to data/questions_train.jsonl batch by batch. A generated question is
-dropped if it matches an eval question or an existing training question (same normalized text, or
-character n-gram cosine >= SAME_QUESTION_SIM); closer-than-usual matches to eval questions are printed
-for manual review and can be added to data/train_exclusions.json.
+dropped if it matches an eval question, an existing training question or an earlier question from the
+same batch (same normalized text, or character n-gram cosine >= SAME_QUESTION_SIM), and a batch keeps at
+most the number of questions it asked for. Closer-than-usual matches to eval questions are printed for
+manual review; paraphrases need a person to read them (scripts/find_leaks.py lists candidates) and go in
+data/train_exclusions.json.
 """
 
 import argparse
@@ -80,10 +82,12 @@ def main() -> None:
 
     def save(batch: tuple[str, str, int, int], texts: list[str]) -> None:
         nonlocal counter, kept, dropped
-        kind, tier, _, _ = batch
-        references = eval_texts + [q.text for q in pool]
-        sims = similarity(texts, references)
-        for text, row in zip(texts, sims, strict=True):
+        kind, tier, n, _ = batch
+        texts = texts[:n]
+        for text in texts:
+            # Compare against everything kept so far, including earlier questions from this batch.
+            references = eval_texts + [q.text for q in pool]
+            row = similarity([text], references)[0]
             if is_same_question(text, references, row):
                 dropped += 1
                 print(f"    dropped duplicate: {text[:80]!r}")

@@ -21,6 +21,11 @@ TOL = 1e-8
 # Independent fits run in parallel; capped so the rebuild leaves cores for other work on the machine.
 N_JOBS = min(4, os.cpu_count() or 1)
 EPS = 1e-6
+# The v0.1 trainer, kept for the regularisation sensitivity check: full-batch gradient descent on
+# cross-entropy for a fixed number of steps, which stops well short of convergence.
+FIXED_STEP_EPOCHS = 300
+FIXED_STEP_LR = 0.5
+FIXED_STEP_L2 = 1e-3
 
 
 def make_vectorizers() -> tuple[TfidfVectorizer, TfidfVectorizer]:
@@ -55,6 +60,25 @@ def softmax_proba(model: LogisticRegression, features: csr_matrix) -> np.ndarray
     out = np.zeros((features.shape[0], len(TIERS)))
     out[:, model.classes_] = model.predict_proba(features)
     return out
+
+
+def fixed_step_softmax(features: csr_matrix, targets: np.ndarray) -> np.ndarray:
+    """v0.1's student: (d + 1, 3) weights (last row is the bias) after FIXED_STEP_EPOCHS steps."""
+    n, d = features.shape
+    weights = np.zeros((d + 1, len(TIERS)))
+    for _ in range(FIXED_STEP_EPOCHS):
+        grad = (fixed_step_proba(weights, features) - targets) / n
+        step_w = features.T @ grad + FIXED_STEP_L2 * weights[:-1]
+        weights = np.vstack(
+            [weights[:-1] - FIXED_STEP_LR * step_w, weights[-1] - FIXED_STEP_LR * grad.sum(axis=0)]
+        )
+    return weights
+
+
+def fixed_step_proba(weights: np.ndarray, features: csr_matrix) -> np.ndarray:
+    logits = features @ weights[:-1] + weights[-1]
+    exp = np.exp(logits - logits.max(axis=1, keepdims=True))
+    return exp / exp.sum(axis=1, keepdims=True)
 
 
 def adjust_prior(probs: np.ndarray, source: np.ndarray, target: np.ndarray) -> np.ndarray:

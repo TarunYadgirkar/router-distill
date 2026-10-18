@@ -1,5 +1,6 @@
-"""Measurement checks: how the judge scores, how much data a comparison needs, whether conclusions
-survive the v0.1 prices or dropping the truncated answer, and what the committed data cost."""
+"""Measurement checks: how the judge scores, why routers lose to the random split, how much data a
+comparison needs, whether conclusions survive the v0.1 prices or dropping the truncated answer, and what
+the committed data cost."""
 
 from collections import Counter
 from dataclasses import replace
@@ -11,7 +12,7 @@ from scipy.stats import spearmanr
 from .config import RECORDED_PRICES, SHORT, TEACHERS, TIERS, cost_usd, reprice_recorded
 from .data import load_answers, load_eval, load_judged, load_labels
 from .grid import OutcomeGrid, build_grid
-from .stats import Policy, bootstrap_indices, ci, gain_samples, point_gain
+from .stats import Policy, bootstrap_indices, ci, gain_samples, p_two_sided, point_gain
 
 if TYPE_CHECKING:
     from .analysis import Inputs
@@ -21,11 +22,39 @@ Z95 = 1.96
 HALF_WIDTHS = (0.05, 0.03)
 
 
+def _two_way(matrix: np.ndarray) -> np.ndarray:
+    """Remove each question's mean, then each rung's mean."""
+    by_question = matrix - matrix.mean(axis=1, keepdims=True)
+    return by_question - by_question.mean(axis=0, keepdims=True)
+
+
+def length_effect(grid: OutcomeGrid) -> dict:
+    """Does a longer answer score higher? Within a question the deep answer is usually both the longest
+    and the best, so length is confounded with rung; the controlled estimate removes question and rung
+    means, and its interval resamples questions (each question is one cluster of three answers)."""
+    log_len, score = np.log(grid.answer_chars), grid.score
+    centered_len = log_len - log_len.mean(axis=1, keepdims=True)
+    centered_score = score - score.mean(axis=1, keepdims=True)
+    raw = float(spearmanr(centered_len.ravel(), centered_score.ravel())[0])
+    controlled = float(spearmanr(_two_way(log_len).ravel(), _two_way(score).ravel())[0])
+    samples = np.array(
+        [
+            spearmanr(_two_way(log_len[rows]).ravel(), _two_way(score[rows]).ravel())[0]
+            for rows in bootstrap_indices(grid.n, SENSITIVITY_BOOT)
+        ]
+    )
+    return {
+        "question_centred_rho": raw,
+        "controlled_rho": controlled,
+        "controlled_rho_ci": ci(samples),
+        "controlled_rho_p": p_two_sided(samples),
+        "within_rung_rho": {t: float(spearmanr(log_len[:, i], score[:, i])[0]) for i, t in enumerate(TIERS)},
+        "deep_longest": int((log_len.argmax(axis=1) == 2).sum()),
+    }
+
+
 def judge_diagnostics(grid: OutcomeGrid) -> dict:
     score = grid.score
-    centered_len = np.log(grid.answer_chars) - np.log(grid.answer_chars).mean(axis=1, keepdims=True)
-    centered_score = score - score.mean(axis=1, keepdims=True)
-    rho, p = spearmanr(centered_len.ravel(), centered_score.ravel())
     best = score.max(axis=1)
     quick_slice = grid.slices == "clean-quick"
     truncated = [
@@ -42,11 +71,90 @@ def judge_diagnostics(grid: OutcomeGrid) -> dict:
         "deep_9_or_10": int((score[:, 2] >= 9).sum()),
         "clean_quick_n": int(quick_slice.sum()),
         "clean_quick_deep_beats_quick": int((score[quick_slice, 2] > score[quick_slice, 0]).sum()),
-        "length_rho": float(rho),
-        "length_p": f"{p:.0e}",
+        "length": length_effect(grid),
         "truncated": truncated,
         "punts": dict(sorted(punts.items())),
         "slice_n": {s: int((grid.slices == s).sum()) for s in sorted(set(grid.slices))},
+    }
+
+
+def _gain_with_p(grid: OutcomeGrid, policy: Policy, idx: np.ndarray) -> dict:
+    score = grid.pick(grid.score, policy.choice).mean()
+    cost = (grid.pick(grid.cost, policy.choice) + policy.route_cost).mean()
+    samples = gain_samples(grid, policy, idx)
+    return {
+        "routes": np.bincount(policy.choice, minlength=3).tolist(),
+        "cost": float(cost),
+        "gain": point_gain(grid, score, cost),
+        "gain_ci": ci(samples),
+        "gain_p": p_two_sided(samples),
+    }
+
+
+def _extra_deep(grid: OutcomeGrid, mask: np.ndarray) -> dict:
+    """What moving the questions in mask from thoughtful to deep buys: judge points per extra dollar."""
+    d_score = grid.score[mask, 2] - grid.score[mask, 1]
+    d_cost = grid.cost[mask, 2] - grid.cost[mask, 1]
+    return {
+        "n": int(mask.sum()),
+        "d_score": float(d_score.mean()),
+        "d_cost": float(d_cost.mean()),
+        "points_per_dollar": float(d_score.mean() / d_cost.mean()),
+    }
+
+
+def two_tier_oracle(grid: OutcomeGrid, low: int, high: int) -> np.ndarray:
+    """Best of two rungs per question, the cheaper one on ties."""
+    return np.where(grid.score[:, low] >= grid.score[:, high], low, high)
+
+
+def cost_mechanism(grid: OutcomeGrid, policies: dict[str, Policy], idx: np.ndarray) -> dict:
+    """Why routers that pick deep for hard questions lose to the random split: hard questions get long,
+    expensive deep answers, while the split buys deep answers on cheap questions too. Each teacher is
+    re-scored with its routing call removed and with its rule collapsed onto two rungs."""
+    slices = sorted(set(grid.slices))
+    by_slice = {
+        s: {"n": int((grid.slices == s).sum()), "cost": grid.cost[grid.slices == s].mean(axis=0).tolist()}
+        for s in slices
+    }
+    zeros = np.zeros(grid.n)
+    variants = {}
+    deep_value = {}
+    for name, p in policies.items():
+        if p.group == "student" and p.meta.get("adjusted"):
+            continue
+        if p.group in ("teacher", "student"):
+            deep = p.choice == 2
+            deep_value[name] = {"deep": _extra_deep(grid, deep), "rest": _extra_deep(grid, ~deep)}
+        if p.group != "teacher":
+            continue
+        rules = {
+            "three tiers": p.choice,
+            "quick or thoughtful": np.where(p.choice == 2, 1, p.choice),
+            "thoughtful or deep": np.where(p.choice == 0, 1, p.choice),
+        }
+        variants[name] = {
+            label: {
+                "with_call": _gain_with_p(grid, replace(p, choice=choice), idx),
+                "without_call": _gain_with_p(grid, replace(p, choice=choice, route_cost=zeros), idx),
+            }
+            for label, choice in rules.items()
+        }
+    oracle = {
+        "three tiers": _gain_with_p(grid, policies["oracle"], idx),
+        "quick or thoughtful": _gain_with_p(
+            grid, Policy("oracle", "reference", two_tier_oracle(grid, 0, 1), zeros), idx
+        ),
+        "thoughtful or deep": _gain_with_p(
+            grid, Policy("oracle", "reference", two_tier_oracle(grid, 1, 2), zeros), idx
+        ),
+    }
+    return {
+        "by_slice": by_slice,
+        "all_questions": _extra_deep(grid, np.ones(grid.n, dtype=bool)),
+        "deep_value": deep_value,
+        "teacher_variants": variants,
+        "oracle_variants": oracle,
     }
 
 
@@ -74,7 +182,16 @@ def _gain_row(grid: OutcomeGrid, policy: Policy, idx: np.ndarray) -> dict:
 
 def sensitivity(inp: "Inputs", policies: list[Policy]) -> dict:
     grid = inp.grid
-    v01 = build_grid(grid.questions, load_answers(), load_judged(), prices=RECORDED_PRICES)
+    key = inp.key
+    v01 = build_grid(
+        grid.questions,
+        load_answers(),
+        load_judged(),
+        sample=key.sample,
+        judge=key.judge,
+        judge_pass=key.judge_pass,
+        prices=RECORDED_PRICES,
+    )
     recorded_route = {
         f"teacher:{SHORT[teacher]}": np.array([label.cost_usd for label in inp.eval_labels[teacher]])
         for teacher in TEACHERS

@@ -5,8 +5,12 @@ from router_distill.students import (
     C_GRID,
     TierStudent,
     adjust_prior,
+    featurize,
+    fixed_step_proba,
+    fixed_step_softmax,
     kl_divergence,
     make_folds,
+    make_vectorizers,
     one_hot,
     soft_targets,
     tune_c,
@@ -32,6 +36,15 @@ def test_distilled_student_matches_constant_soft_target():
     probs = student.predict_proba(TEXTS[:5])
     assert np.allclose(probs.sum(axis=1), 1.0)
     assert np.allclose(probs.mean(axis=0), [0.6, 0.3, 0.1], atol=0.02)
+
+
+def test_fixed_step_trainer_learns_but_stays_softer_than_converged():
+    x = featurize(make_vectorizers(), TEXTS, fit=True)
+    probs = fixed_step_proba(fixed_step_softmax(x, one_hot(TIERS)), x)
+    assert np.allclose(probs.sum(axis=1), 1.0)
+    assert (probs.argmax(axis=1) == one_hot(TIERS).argmax(axis=1)).mean() > 0.95
+    converged = TierStudent(c=100.0).fit(TEXTS, one_hot(TIERS)).predict_proba(TEXTS)
+    assert probs.max(axis=1).mean() < converged.max(axis=1).mean()
 
 
 def test_adjust_prior_moves_mass_toward_target():

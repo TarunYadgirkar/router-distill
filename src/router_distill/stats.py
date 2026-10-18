@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field, replace
 
 import numpy as np
+from sklearn.model_selection import KFold
 
 from .grid import OutcomeGrid
 
@@ -13,6 +14,8 @@ THRESHOLDS = np.linspace(0.0, 1.0, 41)
 GAP_TARGETS = (0.5, 0.8)
 # An operating point counts as "interior" (a real mix of tiers) when no tier gets more than this share.
 INTERIOR_MAX_SHARE = 0.9
+# Folds for choosing an operating point out of sample: pick on 9/10 of the eval questions, apply to the rest.
+CV_TUNE_FOLDS = 10
 
 
 @dataclass
@@ -192,7 +195,53 @@ def curve(grid: OutcomeGrid, policy: Policy, idx: np.ndarray) -> dict:
         "points": points,
         "best_interior_gain": best_interior,
         "best_threshold_gain": best_2d,
+        "cv_tuned_gain": cv_tuned(grid, policy, idx),
         "cost_to_reach": {str(f): cost_to_reach(grid, points, f) for f in GAP_TARGETS},
+    }
+
+
+def candidate_choices(probs: np.ndarray) -> np.ndarray:
+    """(k, n) routing of every candidate operating point: the quantile rules, then the threshold pairs."""
+    quantile = [quantile_choice(probs, tau) for tau in TAUS]
+    pairs = [threshold_choice(probs, a, b) for a in THRESHOLDS for b in THRESHOLDS]
+    return np.array(quantile + pairs)
+
+
+def best_candidate(grid: OutcomeGrid, policy: Policy, candidates: np.ndarray, mask: np.ndarray) -> int:
+    """Index of the interior candidate with the highest gain on the questions in mask."""
+    rows = np.flatnonzero(mask)
+    sub = candidates[:, rows]
+    score = grid.score[rows, sub].mean(axis=1)
+    cost = (grid.cost[rows, sub] + policy.route_cost[rows]).mean(axis=1)
+    k = len(candidates)
+    fixed_cost = np.broadcast_to(grid.cost[rows].mean(axis=0), (k, 3))
+    fixed_score = np.broadcast_to(grid.score[rows].mean(axis=0), (k, 3))
+    gain = score - split_score(fixed_cost, fixed_score, cost)
+    counts = (sub[..., None] == np.arange(3)).sum(axis=1)
+    interior = counts.max(axis=1) <= INTERIOR_MAX_SHARE * len(rows)
+    return int(np.where(interior, gain, -np.inf).argmax())
+
+
+def cv_tuned(grid: OutcomeGrid, policy: Policy, idx: np.ndarray, folds: int = CV_TUNE_FOLDS) -> dict:
+    """Gain of an operating point chosen out of sample: for each fold, pick the best candidate on the
+    other folds and route the held-out questions with it. Unlike the in-sample best point, this pays
+    for the search over candidates."""
+    candidates = candidate_choices(policy.probs)
+    choice = np.empty(grid.n, dtype=int)
+    for train, test in KFold(folds, shuffle=True, random_state=SEED).split(np.arange(grid.n)):
+        mask = np.zeros(grid.n, dtype=bool)
+        mask[train] = True
+        choice[test] = candidates[best_candidate(grid, policy, candidates, mask), test]
+    tuned = replace(policy, choice=choice)
+    score, cost = per_question(grid, tuned)
+    gains = gain_samples(grid, tuned, idx)
+    return {
+        "routes": np.bincount(choice, minlength=3).tolist(),
+        "score": float(score.mean()),
+        "cost": float(cost.mean()),
+        "gain": point_gain(grid, score.mean(), cost.mean()),
+        "gain_ci": ci(gains),
+        "gain_p": p_two_sided(gains),
     }
 
 

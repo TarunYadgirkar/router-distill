@@ -7,8 +7,8 @@ All files are JSON Lines (one object per line) except `train_exclusions.json`. E
 | file | rows | what it is |
 |---|---|---|
 | `questions.jsonl` | 108 | The eval set. Hand-written questions, held out from all training. |
-| `questions_train.jsonl` | 475 | Synthetic training pool written by Claude Opus 5 (`scripts/expand_questions.py`). 6 rows are excluded at load time, leaving 469. |
-| `train_exclusions.json` | 6 | Training rows that copy or paraphrase an eval question, with the eval id and the reason. |
+| `questions_train.jsonl` | 475 | Synthetic training pool written by Claude Opus 5 (`scripts/expand_questions.py`). 7 rows are excluded at load time, leaving 468. |
+| `train_exclusions.json` | 7 | Training rows that copy or paraphrase an eval question, with the eval id and the reason. |
 | `outcomes/answers.jsonl` | 324 | Every eval question answered at every rung. |
 | `outcomes/judged.jsonl` | 324 | A 0-10 score for every answer from Claude Opus 5. |
 | `labels/questions.<teacher>.jsonl` | 108 each | Each teacher's tier distribution for each eval question. |
@@ -35,14 +35,16 @@ Teachers are `claude-haiku-4-5`, `claude-sonnet-5` and `claude-opus-5`.
 ## Known issues
 
 - **max_tokens differs by row.** 303 answers were generated with `max_tokens` 4,000. 21 (19 deep, 2 quick) truncated under that cap, were dropped and were re-run at 16,000. No kept 4,000-token answer reached the cap. `cd-018` at the deep rung still hit 16,000 tokens, is cut off mid-proof, and scored 4. The `max_tokens` values were backfilled from git history (rows present in commit `0fe0acc` ran at 4,000, rows added in `a1de1be` at 16,000); `stop_reason` was not recorded for these rows.
-- **The judge is Claude Opus 5**, which also wrote the deep answers, the training questions and one set of labels. Scores bunch at 8-10, and longer answers score higher within a question.
-- **Leakage handled by exclusion, not deletion.** `questions_train.jsonl` still contains the six excluded rows and the label files still label them, so the files match what was paid for; `router_distill.data.load_train_pool()` drops them.
-- **Near-duplicates inside the training pool.** 12 pairs of the 469 training questions have character n-gram cosine above 0.6 (for example two awk one-liner requests). They were left in; they make the cross-validation agreement in REPORT.md slightly optimistic.
+- **The judge is Claude Opus 5**, which also wrote the deep answers, the training questions and one set of labels. Scores bunch at 8-10. Within a question the deep answer is usually both the longest and the best, so length and rung are confounded; REPORT.md section 6 gives the length effect with rung means removed.
+- **Leakage handled by exclusion, not deletion.** `questions_train.jsonl` still contains the seven excluded rows and the label files still label them, so the files match what was paid for; `router_distill.data.load_train_pool()` drops them.
+- **Paraphrase detection is manual.** The generator drops copies automatically (same normalized text or character n-gram cosine of 0.8 or more). Paraphrases share few characters, so `make leaks` (`scripts/find_leaks.py`) lists the closest eval question for every training question by character n-grams and by all-MiniLM-L6-v2 embedding cosine, and a person decides. syn-0439 (cosine 0.68 to ood-001, character similarity 0.27) was found this way after the first six exclusions; no other pair in the top 40 by either signal asks the same question.
+- **Near-duplicates inside the training pool.** 12 pairs of the 468 training questions have character n-gram cosine above 0.6 (for example two awk one-liner requests). They were left in; they make the cross-validation agreement in REPORT.md slightly optimistic.
 - **Ambiguous slice.** Questions such as "Why did my deploy fail?" have no right answer without context. The judge has no rule for scoring a justified request for more context; 19 of the 72 answers on this slice were flagged as punts.
 
 ## Changes since collection
 
 - 2026-10-18: added the `max_tokens` field to every row of `outcomes/answers.jsonl` (values from git history, see above) and added `train_exclusions.json`. No answer, score or label was changed.
+- 2026-10-18: excluded syn-0439, a paraphrase of ood-001 found in review.
 
 ## Cost
 

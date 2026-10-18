@@ -1,4 +1,4 @@
-.PHONY: install test lint train report figure reproduce check embed
+.PHONY: install test lint train report figure reproduce check embed leaks
 
 install:
 	uv sync
@@ -30,3 +30,8 @@ check: train report
 # Optional encoder students; needs torch + transformers and the all-MiniLM-L6-v2 weights in the HF cache.
 embed:
 	uv run --group embed scripts/embed_students.py
+
+# List training questions that may copy or paraphrase an eval question (character n-grams and the same
+# encoder); a person reads the list and adds real leaks to data/train_exclusions.json.
+leaks:
+	uv run --group embed scripts/find_leaks.py

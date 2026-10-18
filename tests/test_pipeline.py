@@ -125,6 +125,50 @@ def test_expand_questions_mints_ids_past_the_highest_existing_id():
     assert script.next_id([]) == 1
 
 
+def test_expand_questions_drops_duplicates_within_a_batch_and_caps_its_size(tmp_path, monkeypatch):
+    script = load_script("expand_questions")
+    pool = tmp_path / "pool.jsonl"
+    monkeypatch.setattr(script, "TRAIN_PATH", pool)
+    monkeypatch.setattr(script, "plan_batches", lambda existing, n: [("lookup", "quick", 2, 0)])
+    copies = [
+        "How many legs does a zebra have, exactly?",
+        "How many legs does a zebra have, exactly?",
+        "how many legs does a zebra have exactly",
+        "Which planet has the longest day?",
+    ]
+    monkeypatch.setattr(script, "generate", lambda kind, tier, n, idx: copies)
+    monkeypatch.setattr(sys, "argv", ["expand_questions", "--workers", "1"])
+    script.main()
+    assert [q.text for q in read_jsonl(pool, Question)] == [copies[0]]
+
+
+def test_report_numbers_keep_their_sign_near_zero():
+    report = load_script("report")
+    assert report.num(0.0019, signed=True) == "+0.002"
+    assert report.num(-0.004) == "-0.004"
+    assert report.num(0.0001, signed=True) == "0.00"
+    assert report.num(0.067, signed=True) == "+0.07"
+
+
+def test_reproduction_check_allows_one_unit_in_the_last_digit():
+    check = load_script("check_reproduction")
+    assert check.nearly_equal("| `x` | 0.68 [0.60, 0.73] | 35% |", "| `x` | 0.68 [0.61, 0.73] | 36% |")
+    assert not check.nearly_equal("| `x` | 0.68 |", "| `x` | 0.70 |")
+    assert not check.nearly_equal("sonnet-5 46", "opus-5 46")
+
+
+def test_judge_only_models_are_priced_but_answer_no_rung():
+    from router_distill.config import MODELS, TIER_MODEL, cost_usd
+
+    assert "claude-sonnet-5-5" in MODELS and "claude-sonnet-5-5" not in TIER_MODEL.values()
+    assert TIER_MODEL == {
+        "quick": "claude-haiku-4-5",
+        "thoughtful": "claude-sonnet-5",
+        "deep": "claude-opus-5",
+    }
+    assert cost_usd("claude-sonnet-5-5", 1_000_000, 0) == 2.0
+
+
 def test_rungs_and_judge_passes_key_by_sample_and_pass(tmp_path, monkeypatch):
     from router_distill import judge, rungs
     from router_distill.schema import JudgedAnswer, RungAnswer
