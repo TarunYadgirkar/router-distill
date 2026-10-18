@@ -1,99 +1,468 @@
-"""Evaluate every router against the outcome grid and write REPORT.md.
+"""Score every router against the outcome grid; write results/metrics.json and REPORT.md. Offline.
 
-Routers compared: fixed-tier baselines, heuristic, each teacher (as a live router),
-and each teacher's SFT + distilled students. Regret is against the per-question oracle.
-
-Usage: uv run scripts/report.py
+Usage: uv run scripts/report.py   (needs models/ from scripts/train_students.py; `make reproduce` runs both)
 """
 
-from pathlib import Path
+import json
 
-from router_distill import heuristic
-from router_distill.config import TEACHERS, TIERS
-from router_distill.regret import OutcomeGrid, PolicyEval
-from router_distill.schema import JudgedAnswer, Question, RungAnswer, TeacherLabel, read_jsonl
-from router_distill.students import TierStudent
+from scipy.stats import spearmanr
 
-ROOT = Path(__file__).resolve().parents[1]
+from router_distill import analysis
+from router_distill.config import TIERS
+from router_distill.data import ROOT
 
-
-def teacher_policy(teacher: str, ids: list[str]) -> dict[str, str] | None:
-    labels = [TeacherLabel(**row) for row in read_jsonl(ROOT / f"data/labels/questions.{teacher}.jsonl")]
-    if not labels:
-        return None
-    by_id = {l.question_id: l.tier for l in labels}
-    return {qid: by_id[qid] for qid in ids if qid in by_id}
+RESULTS = ROOT / "results/metrics.json"
+EMBEDDING = ROOT / "results/embedding_students.json"
+REPORT = ROOT / "REPORT.md"
 
 
-def student_policy(kind: str, teacher: str, questions: dict[str, Question], ids: list[str]) -> dict[str, str] | None:
-    path = ROOT / f"models/{kind}.{teacher}.pkl"
-    if not path.exists():
-        return None
-    student = TierStudent.load(path)
-    preds = student.predict([questions[qid].text for qid in ids])
-    return dict(zip(ids, preds))
+def num(x: float, digits: int = 2, signed: bool = False) -> str:
+    text = f"{x:+.{digits}f}" if signed else f"{x:.{digits}f}"
+    return text.replace("-0.00", "0.00").replace("+0.00", "0.00") if abs(x) < 0.005 else text
 
 
-def render(evals: list[PolicyEval], grid: OutcomeGrid) -> str:
-    lines = [
-        "# Router regret report",
-        "",
-        f"Scored questions: {len(grid.complete_ids)} (all 3 rungs answered and judged).",
-        "Regret = oracle mean score − policy mean score. Oracle picks the best-scoring rung per question, cheapest on ties.",
-        "",
-        "| router | mean score | regret | mean cost/q | score per $ | latency ms | n |",
-        "|---|---|---|---|---|---|---|",
+def interval(bounds: list[float], digits: int = 2, signed: bool = False) -> str:
+    return f"[{num(bounds[0], digits, signed)}, {num(bounds[1], digits, signed)}]"
+
+
+def pval(p: float) -> str:
+    return "<0.001" if p < 0.001 else f"{p:.3f}"
+
+
+def money(x: float | None) -> str:
+    return "not reached" if x is None else f"${x:.4f}"
+
+
+def routes(r: list[int]) -> str:
+    return "/".join(str(v) for v in r)
+
+
+def table(header: list[str], rows: list[list[str]]) -> list[str]:
+    return ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)] + [
+        "| " + " | ".join(r) + " |" for r in rows
     ]
-    for e in sorted(evals, key=lambda e: e.regret):
-        lines.append(
-            f"| {e.name} | {e.mean_score} | {e.regret} | ${e.mean_cost_usd:.4f} | {e.score_per_dollar} | {int(e.mean_latency_ms)} | {e.n} |"
+
+
+def learned(res: dict) -> list[dict]:
+    return [p for p in res["policies"] if p["group"] in ("teacher", "student")]
+
+
+def best_tuned(res: dict) -> tuple[str, dict]:
+    """Best eval-tuned operating point of any teacher or student, over both sweep families."""
+    names = {p["name"] for p in learned(res)}
+    points = [
+        (name, point)
+        for name, c in res["curves"].items()
+        if name in names
+        for point in (c["best_interior_gain"], c["best_threshold_gain"])
+        if point is not None
+    ]
+    return max(points, key=lambda item: item[1]["gain"])
+
+
+def regret_tracks_deep(res: dict) -> float:
+    rows = learned(res)
+    deep = [p["routes"][2] for p in rows]
+    regret = [p["regret"] for p in rows]
+    return float(spearmanr(deep, regret)[0])
+
+
+def encoder_note(embedding: dict | None) -> str:
+    if embedding is None:
+        return ""
+    agree = [r["eval_agreement"] for r in embedding["students"] if "+prior" not in r["name"]]
+    return (
+        f" Swapping TF-IDF for a pretrained sentence encoder ({embedding['encoder'].split('/')[-1]}) gives "
+        f"{min(agree):.0%}-{max(agree):.0%} (section 3)."
+    )
+
+
+def headline(res: dict, embedding: dict | None) -> list[str]:
+    by = {p["name"]: p for p in res["policies"]}
+    rows = learned(res)
+    gains = [p["gain"] for p in rows]
+    all_below = all(p["gain_ci"][1] < 0 for p in rows)
+    tuned_name, tuned = best_tuned(res)
+    fid = res["fidelity"]
+    agree = [r["eval_agreement"] for r in fid["students"] if "+prior" not in r["name"]]
+    cv_agree = [r["cv_agreement"] for r in fid["students"] if "+prior" not in r["name"]]
+    teacher_agree = [v for t, row in fid["teachers"].items() for o, v in row["agreement"].items() if o != t]
+    survivors = [c for c in res["comparisons"] if c["p_holm"] < 0.05]
+    diag = res["diagnostics"]
+    n = res["meta"]["n_eval"]
+    q2 = (
+        "no teacher-vs-teacher, student-vs-student, student-vs-teacher or distilled-vs-SFT difference survives "
+        "the Holm correction"
+        if not survivors
+        else "only "
+        + ", ".join(f"`{c['a']}` - `{c['b']}`" for c in survivors)
+        + " survive the Holm correction"
+    )
+    return [
+        f"- **No learned router beats a random split.** Every teacher and student lands {num(-max(gains))} to "
+        f"{num(-min(gains))} judge points below the expected score of splitting traffic at random between two "
+        f"fixed rungs at the same average cost"
+        + (", and every 95% interval is below zero." if all_below else ".")
+        + f" The per-question oracle, which needs every answer and its score, is "
+        f"{num(by['oracle']['gain'], signed=True)} {interval(by['oracle']['gain_ci'], signed=True)} above it.",
+        f"- **Tuning the operating point on the eval set itself does not rescue them.** The best point any "
+        f"teacher or student reaches is {num(tuned['gain'], signed=True)} {interval(tuned['gain_ci'], signed=True)} "
+        f"(`{tuned_name}`), chosen in-sample from about 1,800 candidate thresholds.",
+        f"- **Students imitate their teachers only partly (Q1).** Agreement with their own teacher is "
+        f"{min(cv_agree):.0%}-{max(cv_agree):.0%} in cross-validation on the training pool and "
+        f"{min(agree):.0%}-{max(agree):.0%} on the eval questions; the teachers agree with each other "
+        f"{min(teacher_agree):.0%}-{max(teacher_agree):.0%}." + encoder_note(embedding),
+        f"- **The best-teacher question (Q2) gets no answer from this data.** The three teachers label the eval "
+        f"set almost identically, and {q2} (section 4).",
+        f"- **Regret, the v0.1 headline metric, mostly measures how often a router picks deep.** Across teachers "
+        f"and students, Spearman rho between questions sent to deep and regret is {regret_tracks_deep(res):.2f}: "
+        f"the deep rung ties or beats both cheaper rungs on {diag['deep_ties_or_beats']} of {n} questions.",
+    ]
+
+
+def main_table(res: dict) -> list[str]:
+    rows = []
+    for p in res["policies"]:
+        rows.append(
+            [
+                f"`{p['name']}`",
+                routes(p["routes"]),
+                f"{num(p['score'])} {interval(p['score_ci'])}",
+                f"${p['cost']:.4f}",
+                f"{num(p['gain'], signed=True)} {interval(p['gain_ci'], signed=True)}",
+                pval(p["gain_p"]),
+                f"{num(p['regret'])} {interval(p['regret_ci'])}",
+            ]
         )
+    header = [
+        "router",
+        "routes q/t/d",
+        "mean score [95% CI]",
+        "$ per question",
+        "gain vs random split [95% CI]",
+        "p",
+        "regret [95% CI]",
+    ]
+    return table(header, rows)
 
-    slices = sorted({s for e in evals for s in e.by_slice})
-    lines += ["", "## Regret by slice", "", "| router | " + " | ".join(slices) + " |", "|---" * (len(slices) + 1) + "|"]
-    for e in sorted(evals, key=lambda e: e.regret):
-        lines.append("| " + e.name + " | " + " | ".join(str(e.by_slice.get(s, "—")) for s in slices) + " |")
 
-    lines += [
+def curve_table(res: dict) -> list[str]:
+    rows = [
+        [
+            "random split",
+            "0.00",
+            "0.00",
+            money(res["split_cost_to_reach"]["0.5"]),
+            money(res["split_cost_to_reach"]["0.8"]),
+        ]
+    ]
+    for name, c in res["curves"].items():
+        b, t = c["best_interior_gain"], c["best_threshold_gain"]
+        rows.append(
+            [
+                f"`{name}`",
+                f"{num(b['gain'], signed=True)} {interval(b['gain_ci'], signed=True)}",
+                f"{num(t['gain'], signed=True)} {interval(t['gain_ci'], signed=True)}",
+                money(c["cost_to_reach"]["0.5"]),
+                money(c["cost_to_reach"]["0.8"]),
+            ]
+        )
+    header = [
+        "router",
+        "best quantile-rule gain [95% CI]",
+        "best two-threshold gain [95% CI]",
+        "$ to reach 50% of gap",
+        "$ to reach 80% of gap",
+    ]
+    return table(header, rows)
+
+
+def fidelity_tables(res: dict) -> list[str]:
+    fid = res["fidelity"]
+    rows = [
+        [
+            f"`{r['name']}`",
+            f"{r['c']:g}",
+            f"{r['cv_agreement']:.2f}",
+            f"{r['cv_kl']:.2f}",
+            f"{r['eval_agreement']:.2f}",
+            f"{r['eval_kl']:.2f}",
+            f"{r['deep_share']:.0%}",
+        ]
+        for r in fid["students"]
+    ]
+    out = table(
+        ["student", "C", "CV agreement (pool)", "CV KL (pool)", "eval agreement", "eval KL", "sent to deep"],
+        rows,
+    )
+    trows = []
+    for name, t in fid["teachers"].items():
+        trows.append(
+            [
+                name,
+                "/".join(f"{v:.0%}" for v in t["train_prior"]),
+                "/".join(f"{v:.0%}" for v in t["eval_prior"]),
+                f"{t['majority_agreement']:.2f}",
+                ", ".join(f"{o} {v:.2f}" for o, v in t["agreement"].items() if o != name),
+                f"{t['generator_agreement']:.2f}",
+            ]
+        )
+    out += [
         "",
-        "## Reading it",
+        *table(
+            [
+                "teacher",
+                "train labels q/t/d",
+                "eval labels q/t/d",
+                "always-majority agreement",
+                "agreement with other teachers",
+                "agreement with generator's intended tier",
+            ],
+            trows,
+        ),
+    ]
+    return out
+
+
+def embedding_lines(embedding: dict | None) -> list[str]:
+    if embedding is None:
+        return [
+            "Not run: `make embed` trains the encoder students and writes results/embedding_students.json."
+        ]
+    rows = [
+        [
+            f"`{r['name']}`",
+            f"{r['c']:g}",
+            f"{r['cv_agreement']:.2f}",
+            f"{r['eval_agreement']:.2f}",
+            f"{r['eval_kl']:.2f}",
+            routes(r["routes"]),
+            f"{num(r['gain'], signed=True)} {interval(r['gain_ci'], signed=True)}",
+        ]
+        for r in embedding["students"]
+    ]
+    header = [
+        "student",
+        "C",
+        "CV agreement (pool)",
+        "eval agreement",
+        "eval KL",
+        "routes q/t/d",
+        "gain [95% CI]",
+    ]
+    return [
+        f"The same students trained on mean-pooled {embedding['encoder']} embeddings (torch {embedding['torch']}, "
+        f"transformers {embedding['transformers']}, {embedding['device']}). Produced by `make embed`; this table is "
+        "read from the committed results/embedding_students.json, so `make reproduce` does not need torch.",
         "",
-        "- `always-deep` is the quality ceiling money can buy; its regret is what judge noise plus occasional small-model wins look like.",
-        "- The interesting rows are ambiguous/ood slice regret: clean slices are easy for everyone.",
-        "- Teacher rows are live-routing cost-free here (label cost not included in cost/q); student rows route for ~free at inference.",
+        *table(header, rows),
+    ]
+
+
+def comparison_table(res: dict) -> list[str]:
+    rows = [
+        [
+            f"`{c['a']}` - `{c['b']}`",
+            f"{num(c['gain_diff'], signed=True)} {interval(c['gain_diff_ci'], signed=True)}",
+            pval(c["p"]),
+            pval(c["p_holm"]),
+            num(c["score_diff"], signed=True),
+            str(c["disagree"]),
+        ]
+        for c in res["comparisons"]
+    ]
+    return table(
+        ["comparison", "gain difference [95% CI]", "p", "Holm p", "score difference", "routed differently"],
+        rows,
+    )
+
+
+def bootstrap_table(res: dict) -> list[str]:
+    tb = res["training_bootstrap"]
+    rows = []
+    for name, s in tb["students"].items():
+        rows.append(
+            [
+                f"`{name}`",
+                f"{s['agreement'][1]:.2f} [{s['agreement'][0]:.2f}, {s['agreement'][2]:.2f}]",
+                f"{s['deep_share'][1]:.0%} [{s['deep_share'][0]:.0%}, {s['deep_share'][2]:.0%}]",
+                f"{num(s['gain'][1], signed=True)} [{num(s['gain'][0], signed=True)}, {num(s['gain'][2], signed=True)}]",
+            ]
+        )
+    out = table(["student", "eval agreement", "sent to deep", "gain vs random split"], rows)
+    counts = "; ".join(
+        f"{target}: " + ", ".join(f"{t} {n}" for t, n in c.items())
+        for target, c in tb["best_teacher_counts"].items()
+    )
+    return out + [
+        "",
+        f"Resamples in which each teacher's student had the highest gain ({tb['n_boot']} total): {counts}.",
+    ]
+
+
+def slice_table(res: dict) -> list[str]:
+    slice_n = res["diagnostics"]["slice_n"]
+    slices = list(slice_n)
+    rows = [[f"`{p['name']}`"] + [num(p["regret_by_slice"][s]) for s in slices] for p in res["policies"]]
+    return table(["router"] + [f"{s} (n={slice_n[s]})" for s in slices], rows)
+
+
+def diagnostics_lines(res: dict) -> list[str]:
+    d, pw, n = res["diagnostics"], res["power"], res["meta"]["n_eval"]
+    counts = "; ".join(
+        f"{t}: " + ", ".join(f"{k}={v}" for k, v in d["score_counts"][t].items()) for t in TIERS
+    )
+    trunc = (
+        ", ".join(f"{t['question_id']} @ {t['tier']} (score {t['score']:g})" for t in d["truncated"])
+        or "none"
+    )
+    punts = ", ".join(f"{k} {v}" for k, v in d["punts"].items())
+    return [
+        f"- Score counts by rung: {counts}.",
+        f"- The deep rung ties or beats both other rungs on {d['deep_ties_or_beats']} of {n} questions.",
+        f"- Longer answers score higher: within each question, Spearman rho between log answer length and score is "
+        f"{d['length_rho']:.2f} (p = {d['length_p']}).",
+        f"- On the {d['clean_quick_n']} clean-quick trivia questions the deep answer outscores the quick answer "
+        f"{d['clean_quick_deep_beats_quick']} times.",
+        f"- Answers that hit max_tokens: {trunc}.",
+        f"- Judge-flagged punts (slice/rung): {punts}.",
+        f"- Paired per-question score differences between routers have a median SD of {pw['median_sd']:.2f} "
+        f"(max {pw['max_sd']:.2f}). At n = {n} a 95% interval on a difference is about "
+        f"+/-{pw['half_width_now']:.2f}; +/-0.05 needs about {pw['n_for_half_width']['0.05']} questions and "
+        f"+/-0.03 about {pw['n_for_half_width']['0.03']}.",
+    ]
+
+
+def sensitivity_table(res: dict) -> list[str]:
+    sens = res["sensitivity"]
+    rows = []
+    for p in res["policies"]:
+        if p["name"] not in sens["v01_prices"]:
+            continue
+        v, w = sens["v01_prices"][p["name"]], sens["without_truncated"][p["name"]]
+        rows.append(
+            [
+                f"`{p['name']}`",
+                f"{num(p['gain'], signed=True)} {interval(p['gain_ci'], signed=True)}",
+                f"{num(v['gain'], signed=True)} {interval(v['gain_ci'], signed=True)}",
+                f"{num(w['gain'], signed=True)} {interval(w['gain_ci'], signed=True)}",
+            ]
+        )
+    header = [
+        "router",
+        "gain, current prices",
+        "gain at v0.1 prices (Sonnet $3/$15)",
+        f"gain without truncated answers (n={sens['without_truncated_n']})",
+    ]
+    return table(header, rows)
+
+
+def render(res: dict, embedding: dict | None) -> str:
+    m, s, fixed = res["meta"], res["spend"], res["fixed"]
+    lines = [
+        "# Router distillation report",
+        "",
+        "Generated by `make reproduce` from the committed data; do not edit by hand. "
+        f"Eval set: {m['n_eval']} curated questions, each answered at all three rungs and judged by Claude Opus 5. "
+        f"Training pool: {m['n_pool']} synthetic questions ({m['n_excluded']} removed as copies or paraphrases of "
+        f"eval questions). Costs use list prices as of {m['prices_as_of']} ({m['price_source']}). Intervals are "
+        f"95% percentile intervals from {m['n_boot']:,} paired bootstrap resamples of the eval questions (seed "
+        f"{m['seed']}); p-values are two-sided bootstrap p-values.",
+        "",
+        "## Summary",
+        "",
+        *headline(res, embedding),
+        "",
+        "## 1. Every router against the random split",
+        "",
+        "Fixed rungs: "
+        + ", ".join(
+            f"always-{t} scores {num(v['score'])} at ${v['cost']:.4f} per question" for t, v in fixed.items()
+        )
+        + ".",
+        "",
+        "**Gain vs random split** is the router's mean score minus the expected score of sending each question to "
+        "one of two fixed rungs at random, mixed so the average cost matches the router's. A router that knows "
+        "nothing about questions scores 0; only a positive gain shows the router uses the question. Costs include "
+        "the routing call for teacher rows (the teacher labels every query). **Regret** is the per-question oracle's "
+        "mean score minus the router's; it ignores cost, so always-deep looks best on it.",
+        "",
+        "`+prior` rows apply a post-hoc label-shift correction: the student's probabilities are reweighted from its "
+        "training-label distribution to its teacher's label distribution on the eval questions. `generator-label` is "
+        "trained on the tier the question generator was asked for (no teacher). `outcome-cv` is trained on the eval "
+        "set's own oracle tiers with 10-fold cross-validation.",
+        "",
+        *main_table(res),
+        "",
+        "## 2. Operating points tuned on the eval set",
+        "",
+        "Each router's tier probabilities are swept through a quantile rule (send a question to the tier at the "
+        "tau-quantile of its distribution, tau from 0 to 1) and through every pair of thresholds on P(deep) and "
+        "P(quick). Only points that mix tiers (no tier above 90% of traffic) count. Choosing the best point on the "
+        "eval set itself is the most favourable setting for the router, so these gains are optimistic. "
+        f"The 50% and 80% gap targets are mean scores of {num(res['gap_targets']['0.5'])} and "
+        f"{num(res['gap_targets']['0.8'])} (always-quick to always-deep).",
+        "",
+        *curve_table(res),
+        "",
+        "## 3. Imitation fidelity (Q1)",
+        "",
+        "Agreement is the share of questions where the student's top tier equals the teacher's top tier; KL is "
+        "KL(teacher || student) in nats. CV columns are 5-fold cross-validation on the training pool; eval columns "
+        "are the held-out curated questions, which are shorter and differently distributed.",
+        "",
+        *fidelity_tables(res),
+        "",
+        "### A stronger encoder",
+        "",
+        *embedding_lines(embedding),
+        "",
+        "## 4. Is the best solver the best teacher? (Q2)",
+        "",
+        "Paired differences in gain over the random split, Holm-adjusted across the whole family.",
+        "",
+        *comparison_table(res),
+        "",
+        f"Spread over {res['training_bootstrap']['n_boot']} bootstrap resamples of the training pool (median "
+        "[2.5th, 97.5th percentile]), every student refit with its tuned C:",
+        "",
+        *bootstrap_table(res),
+        "",
+        "## 5. Regret by slice",
+        "",
+        *slice_table(res),
+        "",
+        "## 6. Measurement checks",
+        "",
+        *diagnostics_lines(res),
+        "",
+        "## 7. Sensitivity",
+        "",
+        "At the v0.1 prices the fixed rungs cost "
+        + ", ".join(f"${c:.4f}" for c in res["sensitivity"]["v01_fixed_cost"])
+        + " per question.",
+        "",
+        *sensitivity_table(res),
+        "",
+        "## 8. Data and spend",
+        "",
+        f"- Committed rows: {s['n_answers']} rung answers, {s['n_judgments']} judgments, {s['n_labels']} teacher labels.",
+        f"- Cost of those rows at the prices v0.1 recorded: ${s['total_recorded']:.2f} (rungs ${s['rungs_recorded']:.2f}, "
+        f"judge ${s['judge']:.2f}, labels ${s['labels_recorded']:.2f}). At the prices actually in effect "
+        f"(Sonnet 5 at $2/$10): ${s['total_current']:.2f}. Question-generation calls were not recorded.",
+        f"- New API spend for this version of the report: ${s['this_version_api_spend']:.2f}.",
         "",
     ]
     return "\n".join(lines)
 
 
 def main() -> None:
-    questions = {q.id: q for q in read_jsonl(ROOT / "data/questions.jsonl", Question)}
-    rungs = [RungAnswer(**row) for row in read_jsonl(ROOT / "data/outcomes/answers.jsonl")]
-    judged = [JudgedAnswer(**row) for row in read_jsonl(ROOT / "data/outcomes/judged.jsonl")]
-    grid = OutcomeGrid(list(questions.values()), rungs, judged)
-    ids = grid.complete_ids
-    if not ids:
-        raise SystemExit("outcome grid is empty — run run_rungs.py and judge_answers.py first")
-
-    evals = []
-    for tier in TIERS:
-        evals.append(grid.evaluate(f"always-{tier}", {qid: tier for qid in ids}))
-    evals.append(grid.evaluate("oracle", {qid: grid.oracle_tier(qid) for qid in ids}))
-    evals.append(grid.evaluate("heuristic", {qid: heuristic.route(questions[qid].text)["tier"] for qid in ids}))
-
-    for teacher in TEACHERS:
-        policy = teacher_policy(teacher, ids)
-        if policy:
-            evals.append(grid.evaluate(f"teacher:{teacher}", policy))
-        for kind in ("sft", "distilled"):
-            policy = student_policy(kind, teacher, questions, ids)
-            if policy:
-                evals.append(grid.evaluate(f"{kind}:{teacher}", policy))
-
-    report = render(evals, grid)
-    (ROOT / "REPORT.md").write_text(report)
-    print(report)
-    print(f"\nwrote {ROOT / 'REPORT.md'}")
+    res = analysis.rounded(analysis.run())
+    RESULTS.parent.mkdir(parents=True, exist_ok=True)
+    RESULTS.write_text(json.dumps(res, indent=1, sort_keys=False) + "\n")
+    embedding = json.loads(EMBEDDING.read_text()) if EMBEDDING.exists() else None
+    REPORT.write_text(render(res, embedding))
+    print(f"wrote {RESULTS.relative_to(ROOT)} and {REPORT.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
